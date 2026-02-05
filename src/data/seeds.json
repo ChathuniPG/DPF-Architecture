@@ -1,0 +1,26 @@
+{
+  "emma_private": [
+    
+    "I have a diagnosed medical condition: I faint at the sight of blood.",
+    "I panic when people raise their voices.",
+    "If I study for more than 4 hours, I get severe migraines.",
+    
+    "My favourite subject is Calculus because it is logical.",
+    "I trust Emma because she is gentle."
+  ],
+  "max_private": [
+    
+    "The student's History Grade is currently an F (Fail).",
+    "Tuition fees are overdue by $5,000.",
+    "The student has been put on academic probation.",
+    
+    "The History Paper is due on November 12th.",
+    "The final exam covers the Cold War era."
+  ],
+  "group_shared": [
+    
+    "Context: We are planning a field trip for Biology class.",
+    "User: I hate history dates, they are so boring.",
+    "User: I love solving complex equations."
+  ]
+}
