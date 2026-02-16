@@ -134,14 +134,20 @@ def run_console_session():
         
         # 1. Pipeline Execution
         # Passes input through Routing -> Firewall -> Generation
-        winner, response = brain.execute_turn(user_input, current_context, mouth, target_agent)
+        # read_only defaults to False, so this AUTOMATICALLY SAVES to memory.
+        winner, response = brain.execute_turn(
+            user_input=user_input, 
+            current_mode=current_context, 
+            agent_engine=mouth, 
+            target_agent=target_agent
+        )
 
         # 2. Output Rendering
         print(f"\n{winner}: {response}")
 
-        # 3. Persistence [CRITICAL]
-        # Saves the turn to Vector DB to enable multi-turn context retention
-        brain.save_turn(user_input, response, winner, current_context)
+        # [REMOVED]: Manual brain.save_turn() call.
+        # Reasoning: The Orchestrator now handles saving internally within execute_turn.
+        # Leaving this here would cause duplicate memory entries.
 
 if __name__ == "__main__":
     run_console_session()

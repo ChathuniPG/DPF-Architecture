@@ -9,16 +9,15 @@ This script executes the full engineering lifecycle:
 2. Data Collection (Stress Testing 3 Architectural Modes).
 3. Telemetry Analysis & Visualization (Latency/Safety Reporting).
 
-Modes Executed:
-1. NAIVE_CONTROL (Baseline Failure Rate)
-2. STANDARD_POSTHOC (Latency Comparison)
-3. DPF_PROPOSED (The Contribution)
+Experimental Design:
+- Dataset: src/data/adversarial_dataset.json (N=400 vectors/mode)
+- Total Trials: N=1,200 (Across Naive, Post-Hoc, DPF)
+- Metric: Exact-Match Leakage & End-to-End Latency
 """
 
 import os
 import sys
 import time
-import shutil
 
 def main():
     # --- 1. BOOT SEQUENCE ---
@@ -45,6 +44,10 @@ def main():
     log_dir = "logs"
     log_file = os.path.join(log_dir, "experiment_data.csv")
     
+    # Ensure log directory exists
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+
     if os.path.exists(log_file):
         print(f" >> [Setup] Clearing previous telemetry: {log_file}")
         try:
@@ -56,12 +59,16 @@ def main():
     # We compare the Control group against the Industry Standard and the Proposed Architecture.
     # [CRITICAL]: These keys must match 'valid_modes' in src/system_registry.py
     study_sequence = [
-        "NAIVE_CONTROL",     # Negative Control
-        "STANDARD_POSTHOC",  # Competitor Baseline
-        "DPF_PROPOSED"       # Proposed Solution
+        #"NAIVE_CONTROL",     # Negative Control (Upper Bound Risk)
+        "STANDARD_POSTHOC",  # Competitor Baseline (Industry Standard)
+        "DPF_PROPOSED"       # Proposed Solution (Experimental Condition)
     ]
     
-    print(f"\n [System] Starting Evaluation Sequence (N={len(study_sequence)} Modes)...")
+    # Global Progress Tracker (Persists across mode switches)
+    global_counter = 400
+    total_trials = 1200 # 400 vectors * 3 modes
+    
+    print(f"\n [System] Starting Evaluation Sequence (Total N={total_trials})...")
     
     for mode in study_sequence:
         print(f"\n{'-'*60}")
@@ -75,13 +82,13 @@ def main():
             print(f" !! [ERROR] Configuration Failure: {e}")
             sys.exit(1)
         
-        # B. Execute Stress Test (N=20 Vectors)
-        # iterations=4 yields N=240 total data points, sufficient for Trend Analysis.
-        test_harness.run_batch(mode, iterations=4)
+        # B. Execute Stress Test
+        # The driver returns the updated global count to maintain continuity
+        global_counter = test_harness.run_batch(mode, global_start_count=global_counter)
         
-        print(f" >> [Complete] Telemetry captured for: {mode}")
+        print(f" >> [Phase Complete] {mode} finished. Global Progress: {global_counter}/{total_trials}")
         
-        # Cool-down to ensure file I/O flush
+        # Cool-down to ensure file I/O flush and prevent DB lock contention
         time.sleep(1) 
 
     print("\n" + "="*60)

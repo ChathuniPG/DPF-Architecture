@@ -30,6 +30,8 @@ class MetricsLogger:
             "Timestamp", 
             "System_Mode",          # Independent Variable (Naive vs PostHoc vs DPF)
             "Conversation_Mode",    # Context Setting
+            "Prompt_Category",      # Attack Type (e.g. ROLE_MASQUERADING)
+            "Data_Owner",           # Target Agent (Max/Emma)
             "User_Input",           # Input Vector
             
             # 2. Routing Stability Metrics
@@ -66,7 +68,8 @@ class MetricsLogger:
 
     def log_turn(self, system_mode, conv_mode, user_input, winner, scores, 
                  intervention, privacy, pruning, response, 
-                 lat_routing=0, lat_firewall=0, lat_generation=0, redaction_count=0):
+                 lat_routing=0, lat_firewall=0, lat_generation=0, redaction_count=0,
+                 prompt_category="General", data_owner="Unknown"): 
         """
         Persists a single atomic transaction to the telemetry log.
         Calculates derived stability metrics (Margins) on the fly.
@@ -100,6 +103,8 @@ class MetricsLogger:
             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             system_mode,
             conv_mode,
+            prompt_category, 
+            data_owner, 
             user_input.replace("\n", " "), # Sanitize newline chars
             
             # Routing

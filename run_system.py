@@ -29,6 +29,7 @@ def check_dependencies():
         import seaborn              # Statistical plotting
         import langchain            # Orchestration framework
         import langchain_community  # Community extensions
+        
         # Note: 'faiss' is often installed as 'faiss-cpu' but imported as 'faiss'
         try:
             import faiss
@@ -76,7 +77,8 @@ def main():
         
         # Option 2: Automated Experiments
         print("   [2] Run Full Evaluation Pipeline (Research Mode)")
-        print("       > Automates adversarial stress tests (N=240).")
+        print("       > Automates adversarial stress tests.")
+        print("       > Dataset: N=1,200 (400 Vectors x 3 Architectures).")
         print("       > Generates Statistical Reports and Figures.")
         print("")
         
@@ -115,7 +117,10 @@ def main():
             try:
                 # Updated path to the new benchmark script
                 script_path = os.path.join("tests", "benchmark_latency.py")
-                subprocess.run([sys.executable, script_path])
+                if os.path.exists(script_path):
+                    subprocess.run([sys.executable, script_path])
+                else:
+                    print(f" !! [ERROR] Benchmark script not found at: {script_path}")
             except KeyboardInterrupt:
                 pass
             input("\n   [Press Enter to return to menu]")

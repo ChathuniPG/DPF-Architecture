@@ -24,7 +24,6 @@ from langchain_community.llms import Ollama
 from sklearn.metrics.pairwise import cosine_similarity
 
 # Internal Modules
-# Internal Modules
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from agent_config import AGENTS, MODE_CONFIG, TOPIC_DICTIONARY
@@ -158,7 +157,7 @@ class Orchestrator:
             domain_bonus = 0.0
             for topic in self.last_detected_topics:
                 if topic in profile["topics_handled"]:
-                    domain_bonus = 1.5
+                    domain_bonus = 1.5 
                     break
             
             final_score = similarity + role_bias + domain_bonus
@@ -239,7 +238,10 @@ class Orchestrator:
                 
         return intervention_agent
 
-    def execute_turn(self, user_input, current_mode, agent_engine, target_agent=None):
+    # Added prompt_category, data_owner, and read_only arguments
+    def execute_turn(self, user_input, current_mode, agent_engine, target_agent=None, 
+                     prompt_category="General", data_owner="Unknown", read_only=False):
+        
         if not user_input.strip(): return "System", "Input was empty."
 
         # Metrics Accumulators
@@ -383,10 +385,12 @@ class Orchestrator:
                 privacy_active = True
                 total_redactions += len(fw_result.redacted_entities)
 
-        # 6. Telemetry
+        # 6. Telemetry: Pass the new Prompt Category and Data Owner
         self.logger.log_turn(
             system_mode=self.config["system_label"],
             conv_mode=current_mode,
+            prompt_category=prompt_category, 
+            data_owner=data_owner, 
             user_input=user_input,
             winner=winner,
             scores=scores,
@@ -402,6 +406,11 @@ class Orchestrator:
 
         self.last_winner = winner 
         self.last_response_memory = f"Agent ({winner}): {response}"
+        
+        # Only save if NOT read-only (Experiment Mode = Read Only)
+        if not read_only:
+            self.save_turn(user_input, response, winner, current_mode)
+            
         return winner, response
 
     def save_turn(self, user_input, agent_response, winner, current_mode):
