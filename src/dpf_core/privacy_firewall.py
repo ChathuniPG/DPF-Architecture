@@ -1,14 +1,18 @@
 """
-Deterministic Privacy Firewall (Sanitization Engine)
-----------------------------------------------------
+Data Plane Sanitization Engine (Privacy Firewall)
+-------------------------------------------------
 Implements a high-assurance, rule-based privacy enforcement module.
-This component functions as the deterministic 'Data Plane' protection layer,
-executing pre-defined constraints with linear O(N) runtime complexity.
+This component functions as the deterministic 'Data Plane' protection layer 
+within a zero-trust orchestration pipeline, executing pre-defined constraints 
+with strictly bounded runtime complexity.
 
 Architectural Objectives:
-1. Low Latency: Utilizes pre-compiled regex automata to minimize runtime overhead.
-2. Auditability: Decouples detection (logging) from enforcement (redaction).
-3. Determinism: Ensures identical inputs always yield identical, safe outputs.
+1. Low Latency: Utilizes pre-compiled regex automata (DFA/NFA) to minimize runtime 
+   overhead, shifting compilation costs to system initialization.
+2. Auditability: Strictly decouples threat detection (telemetry logging) from 
+   enforcement (string redaction) to ensure complete security visibility.
+3. Determinism: Guarantees that identical inputs will always yield identically 
+   safe outputs, immune to the stochastic variability of downstream generative models.
 """
 
 import re
@@ -17,16 +21,16 @@ import os
 from dataclasses import dataclass, field
 from typing import List, Tuple
 
-# Robustly handle the import of the sibling config file
+# Robust import resolution to handle execution across varied deployment environments
 try:
-    # Attempt relative import (Package Mode)
+    # Attempt relative import (Package/Module Mode)
     from .firewall_config import FIREWALL_RULES
 except ImportError:
-    # Fallback to direct import (Script Mode or Path Issue)
+    # Fallback to direct import (Standalone Script Mode)
     try:
         from firewall_config import FIREWALL_RULES
     except ImportError:
-        # If running from root, help python find the sibling file
+        # Dynamic path resolution for root-level execution
         sys.path.append(os.path.dirname(os.path.abspath(__file__)))
         from firewall_config import FIREWALL_RULES
 
@@ -34,7 +38,7 @@ except ImportError:
 class FirewallResult:
     """
     Structured output contract for the Sanitization Engine.
-    Serves as the immutable audit log for privacy violations.
+    Serves as the immutable audit log for compliance telemetry and orchestration routing.
     """
     clean_text: str
     is_triggered: bool
@@ -43,18 +47,24 @@ class FirewallResult:
 
 class PrivacyFirewall:
     def __init__(self):
+        """
+        Initializes the Deterministic Sanitization Engine.
+        Pre-compiles the entire rule registry into memory to ensure that runtime 
+        evaluations execute in linear time relative to the input length.
+        """
         print(" >> [System] Initializing Deterministic Sanitization Engine...")
         
-        # [LATENCY OPTIMIZATION] 
-        # Pre-compile regular expressions during system boot.
-        # This shifts the computational cost to initialization time, ensuring
-        # runtime evaluation remains lightweight (O(N) relative to input length).
+        # [COMPUTE OPTIMIZATION] 
+        # Pre-compiling regular expressions shifts the computational cost of 
+        # pattern parsing to system boot. This guarantees that real-time text 
+        # evaluation remains lightweight and predictable.
         self.compiled_rules: List[Tuple[str, re.Pattern, str]] = []
         
         compilation_errors = 0
         for rule_id, raw_pattern, replacement in FIREWALL_RULES:
             try:
-                # Compile with IGNORECASE to handle diverse user inputs robustness
+                # Compile with IGNORECASE to maximize recall against varied user casing 
+                # and adversarial obfuscation attempts (e.g., 'pAnIc', 'Panic').
                 compiled = re.compile(raw_pattern, re.IGNORECASE)
                 self.compiled_rules.append((rule_id, compiled, replacement))
             except re.error as e:
@@ -67,28 +77,31 @@ class PrivacyFirewall:
 
     def evaluate(self, text: str) -> FirewallResult:
         """
-        Executes a linear sanitization pass against the input text.
+        Executes a linear sanitization pass against the provided text payload.
         
         Operation:
-        Iterates through the pre-compiled rule set. For every match,
-        logs the violation (Detection) and applies the mask (Enforcement).
+        Iterates sequentially through the pre-compiled rule registry. For every match,
+        the engine records the violation (Detection Phase) and applies the designated 
+        masking token (Enforcement Phase).
         
         Args:
-            text (str): The raw input string (User Prompt or Context Data).
+            text (str): The raw input string (e.g., User Prompt or RAG Context).
             
         Returns:
-            FirewallResult: The sanitized string and telemetry data.
+            FirewallResult: A structured data class containing the sanitized string 
+                            and comprehensive telemetry data.
         """
-        # Defensive check for empty inputs
+        # Defensive check for null or empty payloads
         if not text:
             return FirewallResult(clean_text="", is_triggered=False)
 
-        # [CIRCUIT BREAKER] Input Truncation
-        # Prevents "Memory Explosion" bugs from stalling the regex engine.
-        # If input exceeds 5000 chars (approx 1000 words), we truncate.
+        # [CIRCUIT BREAKER: ALGORITHMIC COMPLEXITY MITIGATION]
+        # Prevents Regular Expression Denial of Service (ReDoS) or "Memory Explosion" 
+        # by enforcing a strict upper bound on the evaluation string.
+        # If the input exceeds the threshold, it is forcibly truncated, guaranteeing 
+        # that the maximum evaluation time remains constant O(1) at the limit.
         MAX_SAFE_LENGTH = 5000
         if len(text) > MAX_SAFE_LENGTH:
-            # We enforce a hard ceiling on input size to guarantee O(N) compliance.
             current_text = text[:MAX_SAFE_LENGTH]
         else:
             current_text = text
@@ -99,22 +112,27 @@ class PrivacyFirewall:
 
         # Linear pass through the optimized regex automata
         for rule_id, pattern_obj, replacement in self.compiled_rules:
+            
             # 1. Detection Phase (Audit Logging)
-            # We locate matches before modification to preserve the specific leak details.
+            # Locate all matches prior to modification to preserve the exact raw strings 
+            # for security auditing and forensic telemetry.
             matches = pattern_obj.findall(current_text)
+            
             if matches:
-                redacted_items.extend(matches)
+                # Normalize tuple matches (from regex groups) to strings if necessary
+                flat_matches = [m if isinstance(m, str) else m[0] for m in matches]
+                redacted_items.extend(flat_matches)
                 triggered_rules.append(rule_id)
                 is_modified = True
                 
                 # 2. Enforcement Phase (Redaction)
-                # Apply the deterministic replacement token.
+                # Apply the deterministic replacement token to neutralize the payload.
                 current_text = pattern_obj.sub(replacement, current_text)
 
         return FirewallResult(
             clean_text=current_text,
             is_triggered=is_modified,
             redacted_entities=redacted_items,
-            # Use set() to ensure rule hits are unique in the log summary
+            # Cast to set then list to ensure rule IDs are uniquely deduplicated in logs
             rule_hits=list(set(triggered_rules)) 
         )

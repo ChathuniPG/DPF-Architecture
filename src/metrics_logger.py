@@ -1,14 +1,17 @@
 """
 Metrics Logging System (System Telemetry)
 -----------------------------------------
-Primary observability module for the DPF Architecture evaluation.
-Captures real-time performance data, routing stability metrics, and 
-privacy enforcement events for downstream statistical analysis.
+Primary observability and telemetry module for the multi-agent orchestration framework.
+Captures real-time performance data, routing stability metrics, and privacy 
+enforcement events to enable rigorous downstream analysis and system auditing.
 
-Data Schema:
-1. Routing Telemetry: Quantifies the stability of the Vector Router (Margin Analysis).
-2. System Latency: Breakdown of computational overhead (O(1) vs O(N)).
-3. Safety Metrics: Automatic counts of firewall redaction events.
+Data Schema Design:
+1. Routing Telemetry: Quantifies the confidence and stability of the Semantic Router 
+   by tracking nearest-neighbor vector margins.
+2. System Latency Profiling: Provides a granular breakdown of computational overhead 
+   (Routing decision vs. Security enforcement vs. LLM generation).
+3. Safety & Compliance Metrics: Automates the auditing of firewall redaction events 
+   and active guardrail interventions.
 """
 
 import csv
@@ -16,8 +19,13 @@ import os
 from datetime import datetime
 
 class MetricsLogger:
-    def __init__(self, filename="experiment_data.csv"):
-        # Ensure log directory availability
+    def __init__(self, filename="system_telemetry.csv"):
+        """
+        Initializes the Observability Logger.
+        Establishes the data schema and ensures safe I/O operations for the 
+        persistent telemetry log.
+        """
+        # Ensure log directory availability using robust relative paths
         self.log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs")
         if not os.path.exists(self.log_dir):
             os.makedirs(self.log_dir)
@@ -25,119 +33,121 @@ class MetricsLogger:
         self.filepath = os.path.join(self.log_dir, filename)
         
         # --- ENGINEERING DATA SCHEMA ---
+        # Defines the strictly ordered columns for the CSV data store
         self.headers = [
-            # 1. Experimental Conditions
+            # 1. Context & State Conditions
             "Timestamp", 
-            "System_Mode",          # Independent Variable (Naive vs PostHoc vs DPF)
-            "Conversation_Mode",    # Context Setting
-            "Prompt_Category",      # Attack Type (e.g. ROLE_MASQUERADING)
-            "Data_Owner",           # Target Agent (Max/Emma)
-            "User_Input",           # Input Vector
+            "System_Mode",          # Active architectural state (e.g., Baseline vs Secure)
+            "Conversation_Mode",    # Topological context (Dyadic Private vs Group Shared)
+            "Prompt_Category",      # Classification of the input intent (e.g., Threat Vector)
+            "Data_Owner",           # Target Agent/Domain Authority (Max/Emma)
+            "User_Input",           # Raw Input Vector (Sanitized for CSV)
             
             # 2. Routing Stability Metrics
-            "Winner_Agent",         # Selected Execution Path
-            "Winning_Score",        # Primary Vector Similarity
+            "Winner_Agent",         # Selected Execution Path / Target Node
+            "Winning_Score",        # Primary Vector Similarity (Cosine/L2)
             "Runner_Up_Score",      # Secondary Vector Similarity
-            "Routing_Margin",       # Stability Indicator (Winner - RunnerUp)
+            "Routing_Margin",       # Semantic Stability Indicator (Winner - RunnerUp)
             
-            # 3. Control Plane Flags
-            "Intervention_Active",  # Active Guardrail Triggered?
-            "Privacy_Active",       # Data Plane Firewall Triggered?
-            "Pruning_Active",       # Context Window Optimization?
+            # 3. Control Plane Event Flags
+            "Intervention_Active",  # Boolean: Was an Active Guardrail triggered?
+            "Privacy_Active",       # Boolean: Did the Data Plane Firewall redact tokens?
+            "Pruning_Active",       # Boolean: Was context window truncation applied?
             
-            # 4. System Performance (Latency)
-            "Latency_Routing_ms",   # Decision Overhead
-            "Latency_Firewall_ms",  # Sanitization Overhead
-            "Latency_Generation_ms",# LLM Inference Time
-            "Total_Latency_ms",     # End-to-End Latency
+            # 4. System Performance Profiling (Latency)
+            "Latency_Routing_ms",   # O(L) Decision & Orchestration Overhead
+            "Latency_Firewall_ms",  # O(1) Bounded Sanitization Overhead
+            "Latency_Generation_ms",# O(N) LLM Autoregressive Inference Time
+            "Total_Latency_ms",     # End-to-End Turn Latency
             
-            # 5. Output Metrics
-            "Response_Word_Count",  # Throughput Proxy
-            "Redaction_Count",      # Safety Efficacy Metric
-            "Final_Response"        # Artifact
+            # 5. Output Artifacts & Efficacy
+            "Response_Word_Count",  # System Throughput Proxy
+            "Redaction_Count",      # Quantitative Safety Efficacy Metric
+            "Final_Response"        # Sanitized Generation Artifact
         ]
         
-        # Initialize CSV with Engineering Header
+        # Initialize the CSV store with the Engineering Header if it does not exist
         if not os.path.exists(self.filepath):
             try:
                 with open(self.filepath, mode='w', newline='', encoding='utf-8') as f:
                     writer = csv.writer(f)
                     writer.writerow(self.headers)
             except PermissionError:
-                print(f" [CRITICAL] File Lock Error: Please close '{filename}'")
+                print(f" [CRITICAL] File Lock Error: Please release the lock on '{filename}'")
 
     def log_turn(self, system_mode, conv_mode, user_input, winner, scores, 
                  intervention, privacy, pruning, response, 
                  lat_routing=0, lat_firewall=0, lat_generation=0, redaction_count=0,
                  prompt_category="General", data_owner="Unknown"): 
         """
-        Persists a single atomic transaction to the telemetry log.
-        Calculates derived stability metrics (Margins) on the fly.
+        Persists a single atomic conversational transaction to the telemetry log.
+        Dynamically calculates derived stability metrics (e.g., Routing Margins) 
+        and total latency overheads prior to disk I/O.
         """
         
-        # --- 1. Calculate Routing Stability Margin ---
+        # --- 1. Calculate Semantic Routing Stability Margin ---
         # A high margin indicates a confident, stable architectural decision.
-        # A low margin (<0.05) indicates semantic ambiguity.
+        # A low margin (e.g., < 0.05) indicates semantic ambiguity and potential context collision.
         winning_score = 0.0
         runner_up_score = 0.0
         routing_margin = 0.0
         
         if scores:
-            # Sort scores descending to isolate top candidates
+            # Sort scores descending to isolate the top two candidate nodes
             sorted_scores = sorted(scores.values(), reverse=True)
             winning_score = sorted_scores[0] if len(sorted_scores) > 0 else 0.0
             runner_up_score = sorted_scores[1] if len(sorted_scores) > 1 else 0.0
             
-            # Precision rounding to 4 decimal places for consistency
+            # Enforce precision rounding to 4 decimal places for scientific consistency
             winning_score = round(winning_score, 4)
             runner_up_score = round(runner_up_score, 4)
             routing_margin = round(winning_score - runner_up_score, 4)
 
-        # --- 2. Calculate System Performance ---
+        # --- 2. Calculate System Performance Aggregates ---
         word_count = len(response.split())
         total_latency = round(lat_routing + lat_firewall + lat_generation, 2)
 
-        # --- 3. Construct Data Row ---
+        # --- 3. Construct Telemetry Row ---
         row = [
-            # Conditions
+            # State Conditions
             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             system_mode,
             conv_mode,
             prompt_category, 
             data_owner, 
-            user_input.replace("\n", " "), # Sanitize newline chars
+            user_input.replace("\n", " "), # Sanitize newline chars to prevent CSV corruption
             
-            # Routing
+            # Routing Diagnostics
             winner,
             f"{winning_score:.4f}",
             f"{runner_up_score:.4f}",
-            f"{routing_margin:.4f}", # The "Stability" Metric
+            f"{routing_margin:.4f}", # The derived 'Stability' Metric
             
-            # Flags (Boolean -> Integer for CSV compatibility)
+            # Boolean Flags (Cast to Integer for strict schema compatibility)
             1 if intervention else 0,
             1 if privacy else 0,
             1 if pruning else 0,
             
-            # Latency
+            # Latency Profiling
             f"{lat_routing:.2f}",
             f"{lat_firewall:.2f}",
             f"{lat_generation:.2f}",
             f"{total_latency:.2f}",
             
-            # Output
+            # Output Artifacts
             word_count,
             redaction_count,
-            response.replace("\n", " ")
+            response.replace("\n", " ") # Sanitize output string
         ]
         
-        # --- 4. Write to Disk ---
+        # --- 4. Disk I/O Commits ---
         try:
             with open(self.filepath, mode='a', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
                 writer.writerow(row)
             
-            # Console Feedback for Observability
-            print(f"    [Log] Latency: {total_latency}ms | Margin: {routing_margin} | Safe: {privacy}")
+            # Console Feedback for real-time observability
+            print(f"    [Telemetry] Latency: {total_latency}ms | Margin: {routing_margin} | Privacy Triggered: {privacy}")
 
         except PermissionError:
-             print(f" [CRITICAL ERROR] Could not write to log. Is '{self.filepath}' open?")
+             print(f" [CRITICAL ERROR] Could not commit telemetry to disk. Is '{self.filepath}' open in another process?")

@@ -1,35 +1,39 @@
 """
-Analytical Visualization Engine & Statistical Validation
+Analytical Visualization & Statistical Validation Engine
 ------------------------------------------------------
-This module processes audited telemetry logs to generate quantitative 
-results.
+This module serves as the primary data synthesis pipeline. It ingests 
+the raw telemetry and automated audit logs generated during system evaluation, 
+and produces publication-ready statistical tables and high-resolution figures.
 
-DATA SOURCE:
-- Reads 'audit_results.csv' (Output of evaluate_privacy_audit.py).
-- Uses 'Hybrid_Verdict' (Ground Truth).
+Data Provenance:
+- Source: Dynamically routed via CLI (defaults to 'logs/audit_results.csv').
+- Ground Truth: Derives performance metrics utilizing the 'Hybrid_Verdict' column.
 
-OUTPUTS:
-1. Figures:
-   - Latency-Safety Trade-off (Dual Axis)
-   - Cross-Context Leakage Rate (Global)
-   - Attack-Specific Leakage Analysis (Category Breakdown)
-   - Scalability Trends
-2. Tables (CSVs):
-   - Experimental Configurations
-   - Baseline Comparison Summary
-   - Statistical Significance Results 
-   - Firewall Activity Summary
-   - Category Analysis
+Generated Artifacts:
+1. Figures (.png):
+   - Latency-Safety Trade-off (Dual Y-Axis)
+   - Cross-Context Leakage Rate (Global Architecture Comparison)
+   - Attack-Specific Leakage Analysis (Vector Category Breakdown)
+   - Scalability Trends (Linear Regression Modeling)
+2. Statistical Tables (.csv):
+   - Experimental Configuration Matrix
+   - Baseline Comparison Summary (Mean Latency & Leakage Rates)
+   - Statistical Significance Analysis (Fisher's Exact & Mann-Whitney U)
+   - Deterministic Firewall Activity Summary
+   - Threat Category Analysis Matrix
 """
 
+import sys
+import os
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
-import os
 import warnings
 from scipy.stats import mannwhitneyu, fisher_exact
 
 # --- PUBLICATION GRAPHICS STANDARDS ---
+# Enforces strict typesetting and DPI configurations suitable for 
+# inclusion in high-impact scientific or engineering literature.
 try:
     plt.rcParams['font.family'] = 'serif'
     plt.rcParams['font.serif'] = ['Times New Roman'] + plt.rcParams['font.serif']
@@ -41,23 +45,27 @@ try:
     plt.rcParams['legend.fontsize'] = 9
     plt.rcParams['figure.dpi'] = 600
 except Exception:
-    pass
+    pass # Fallback to system defaults if specific fonts are unavailable
 
-# --- CONFIGURATION ---
+# --- INFRASTRUCTURE CONFIGURATION ---
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# CRITICAL UPDATE: Read the AUDIT results
-LOG_FILE = os.path.join(BASE_DIR, "logs", "audit_results.csv")
+# Allow dynamic path injection from the CLI, default to standard runtime logs/
+if len(sys.argv) > 1:
+    LOG_FILE = sys.argv[1]
+else:
+    LOG_FILE = os.path.join(BASE_DIR, "logs", "audit_results.csv")
 
 OUTPUT_DIR = os.path.join(BASE_DIR, "paper_results")
 if not os.path.exists(OUTPUT_DIR):
     try: os.makedirs(OUTPUT_DIR)
     except: pass
 
+# Accessibility-conscious color palette (Colorblind safe)
 PALETTE = {
-    "NAIVE_CONTROL": "#D55E00",      # Vermillion (High Risk)
-    "STANDARD_POSTHOC": "#F0E442",   # Yellow (Caution)
-    "DPF_PROPOSED": "#009E73"        # Bluish Green (Safe)
+    "NAIVE_CONTROL": "#D55E00",      # Vermillion (High Risk Baseline)
+    "STANDARD_POSTHOC": "#F0E442",   # Yellow (Caution / Intermediate)
+    "DPF_PROPOSED": "#009E73"        # Bluish Green (Secured State)
 }
 
 LABELS = {
@@ -69,25 +77,28 @@ LABELS = {
 # --- STATISTICAL UTILITIES ---
 
 def calculate_cliffs_delta(u_stat, n1, n2):
+    """Calculates Cliff's Delta (Non-parametric effect size) for latency analysis."""
     try:
         return (2 * u_stat) / (n1 * n2) - 1
     except ZeroDivisionError:
         return 0.0
 
 def calculate_odds_ratio(a, b, c, d):
-    # Odds Ratio for Fisher's Test Effect Size
+    """Calculates the Odds Ratio for categorical Fisher's Exact Tests."""
     try:
         return (a * d) / (b * c)
     except ZeroDivisionError:
         return 0.0
 
 def interpret_p_value(p):
+    """Standardizes the formatting of p-values for tabular display."""
     if p < 0.001: return "< 0.001"
     if p < 0.01: return "< 0.01"
     if p < 0.05: return "< 0.05"
     return "n.s."
 
 def get_effect_size_label(d, metric="Cliffs"):
+    """Maps continuous effect size values to qualitative standard interpretations."""
     ad = abs(d)
     if metric == "Cliffs":
         if ad < 0.147: return "Negligible"
@@ -95,23 +106,20 @@ def get_effect_size_label(d, metric="Cliffs"):
         if ad < 0.47: return "Medium"
         return "Large"
     elif metric == "OddsRatio":
-        # Rule of thumb for OR
         if ad < 1.5: return "Negligible"
         if ad < 3.0: return "Small"
         if ad < 5.0: return "Medium"
         return "Large"
     return "Unknown"
 
-# --- TABLE GENERATION ---
+# --- REPORT GENERATION (TABULAR) ---
 
 def generate_config_table(df):
     """
-    Table: Experimental Configurations
+    Serializes the Experimental Configurations matrix.
     """
     n_counts = df["System_Mode"].value_counts()
     n_val = n_counts.get("DPF_PROPOSED", 0) 
-    
-    # We use PROMPT_COUNT (400) derived from data
     
     data = {
         "Parameter": [
@@ -126,13 +134,14 @@ def generate_config_table(df):
     out_df = pd.DataFrame(data)
     outfile = os.path.join(OUTPUT_DIR, "Table_Experimental_Configuration.csv")
     out_df.to_csv(outfile, index=False)
-    print(f" >> [Table] Generated Configuration Table: {outfile}")
+    print(f" >> [Table] Generated Configuration Matrix: {outfile}")
 
 def generate_baseline_table(df):
     """
-    Table: Baseline Comparison Summary
+    Synthesizes the core architectural performance metrics (Latency & Leakage).
     """
     modes = ["NAIVE_CONTROL", "STANDARD_POSTHOC", "DPF_PROPOSED"]
+    # Filter out benign traffic to calculate adversarial leakage accurately
     threat_df = df[df["Prompt_Category"] != "General"]
 
     summary = []
@@ -141,28 +150,28 @@ def generate_baseline_table(df):
     for mode in modes:
         subset = threat_df[threat_df["System_Mode"] == mode]
         
-        # 1. Leakage Metrics (Ground Truth)
+        # 1. Leakage Metrics (Ground Truth Verification)
         leaks = len(subset[subset["Hybrid_Verdict"] == "LEAK"])
         total = len(subset)
         leak_rate = (leaks / total * 100) if total > 0 else 0
         leak_str = f"{leaks}/{total}"
 
-        # 2. Defensive Routing (Agent Swap)
+        # 2. Defensive Routing (Inter-Agent Handoff Verification)
         if "Data_Owner" in subset.columns and "Winner_Agent" in subset.columns:
             swaps = len(subset[subset["Data_Owner"] != subset["Winner_Agent"]])
             swap_rate = (swaps / total * 100) if total > 0 else 0
         else:
             swap_rate = 0.0
 
-        # 3. Latency Metrics
+        # 3. Latency Profiling (Mean ± Std Dev)
         full_subset = df[df["System_Mode"] == mode]
         curr_latency = full_subset["Total_Latency_ms"].mean()
-        curr_std = full_subset["Total_Latency_ms"].std()  # <-- NEW: Calculate Standard Deviation
+        curr_std = full_subset["Total_Latency_ms"].std() 
         
         latency_delta = curr_latency - naive_latency
         delta_str = "—" if mode == "NAIVE_CONTROL" else f"+{latency_delta:.1f} ms"
         
-        # 4. Routing Margin
+        # 4. Routing Decision Confidence
         margin = full_subset["Routing_Margin"].mean()
         
         summary.append({
@@ -170,7 +179,7 @@ def generate_baseline_table(df):
             "Cross-Context Leakage Events": leak_str,
             "Leakage Rate (%)": f"{leak_rate:.1f}%",
             "Defensive Routing Rate (%)": f"{swap_rate:.1f}%",
-            "Mean Latency (ms)": f"{curr_latency:.1f} ± {curr_std:.1f}", # <-- UPDATED: Add the ± format
+            "Mean Latency (ms)": f"{curr_latency:.1f} ± {curr_std:.1f}", 
             "Latency Overhead vs NAIVE": delta_str,
             "Routing Margin (Mean)": f"{margin:.4f}"
         })
@@ -184,11 +193,11 @@ def generate_baseline_table(df):
     out_df = pd.DataFrame(final_data)
     outfile = os.path.join(OUTPUT_DIR, "Table_Baseline_Comparison.csv")
     out_df.to_csv(outfile, index=False)
-    print(f" >> [Table] Generated Baseline Comparison Table: {outfile}")
+    print(f" >> [Table] Generated Baseline Comparison: {outfile}")
 
 def generate_category_table(df):
     """
-    Table: Leakage by Attack Category
+    Pivot table mapping threat vectors to architectural resilience.
     """
     if "Prompt_Category" not in df.columns: return
 
@@ -203,54 +212,46 @@ def generate_category_table(df):
     
     outfile = os.path.join(OUTPUT_DIR, "Table_Category_Analysis.csv")
     pivot.to_csv(outfile)
-    print(f" >> [Table] Generated Category Analysis Table: {outfile}")
+    print(f" >> [Table] Generated Threat Vector Matrix: {outfile}")
 
 def generate_stats_table(df):
     """
-    Table: Statistical Significance Results
-    Uses Fisher's Exact Test for Leakage (Binary) 
-    and Mann-Whitney U for Latency (Continuous).
+    Executes rigorous statistical hypothesis testing on the performance data.
+    - Fisher's Exact Test: Used for categorical/binary outcomes (Leak vs Safe).
+    - Mann-Whitney U: Used for non-normally distributed continuous data (Latency).
     """
     results = []
     
-    # Helper: Get counts for Fisher's Exact Test
     def get_fisher_counts(mode):
         subset = df[(df["System_Mode"] == mode) & (df["Prompt_Category"] != "General")]
         leaks = len(subset[subset["Hybrid_Verdict"] == "LEAK"])
         safe = len(subset) - leaks
         return leaks, safe
 
-    # Helper: Get continuous vector for Mann-Whitney U
     def get_vec(mode, col):
         return df[df["System_Mode"] == mode][col].dropna()
 
     comparisons = [
-        # 1. Leakage Rate: Naive vs Post-Hoc (Fisher's Exact)
         ("NAIVE_CONTROL", "STANDARD_POSTHOC", "Leakage Rate", "Outcomes", "fisher"),
-        # 2. Leakage Rate: Post-Hoc vs DPF (Fisher's Exact)
         ("STANDARD_POSTHOC", "DPF_PROPOSED", "Leakage Rate", "Outcomes", "fisher"),
-        # 3. Latency: Post-Hoc vs DPF (Mann-Whitney U)
         ("STANDARD_POSTHOC", "DPF_PROPOSED", "Latency", "Performance", "mwu"),
     ]
 
     for sys_a, sys_b, metric_name, category, test_type in comparisons:
         
         if test_type == "fisher":
-            # Fisher's Exact Test for Binary Outcomes
             leaks_a, safe_a = get_fisher_counts(sys_a)
             leaks_b, safe_b = get_fisher_counts(sys_b)
             
-            # Contingency Table: [[Leaks_A, Safe_A], [Leaks_B, Safe_B]]
+            # Formulate Contingency Table
             table = [[leaks_a, safe_a], [leaks_b, safe_b]]
-            odds_ratio, p = fisher_exact(table, alternative='greater') # Testing if A > B (A leaks more)
+            odds_ratio, p = fisher_exact(table, alternative='greater') 
             
-            # Effect Size for Fisher is Odds Ratio
             effect_label = get_effect_size_label(odds_ratio, "OddsRatio")
             stat_val = f"OR={odds_ratio:.1f}"
             test_name = "Fisher's Exact"
 
-        else: # test_type == "mwu"
-            # Mann-Whitney U for Continuous Data
+        else: 
             vec_a = get_vec(sys_a, "Total_Latency_ms")
             vec_b = get_vec(sys_b, "Total_Latency_ms")
             
@@ -278,11 +279,11 @@ def generate_stats_table(df):
     out_df = pd.DataFrame(results)
     outfile = os.path.join(OUTPUT_DIR, "Table_Statistical_Results.csv")
     out_df.to_csv(outfile, index=False)
-    print(f" >> [Table] Generated Stats Table: {outfile}")
+    print(f" >> [Table] Generated Statistical Analysis: {outfile}")
 
 def generate_firewall_table(df):
     """
-    Table: Firewall Activity Summary (DPF Only)
+    Summarizes the internal telemetry of the deterministic sanitization engine.
     """
     dpf = df[df["System_Mode"] == "DPF_PROPOSED"]
     
@@ -311,13 +312,14 @@ def generate_firewall_table(df):
     out_df = pd.DataFrame(data, columns=["Metric", "Value"])
     outfile = os.path.join(OUTPUT_DIR, "Table_Firewall_Activity.csv")
     out_df.to_csv(outfile, index=False)
-    print(f" >> [Table] Generated Firewall Table: {outfile}")
+    print(f" >> [Table] Generated Firewall Telemetry: {outfile}")
 
-# --- FIGURE GENERATION ---
+# --- FIGURE GENERATION (PLOTS) ---
 
 def plot_latency_safety_tradeoff(df):
     """ 
-    Figure: Latency vs Safety Tradeoff
+    Renders a dual-axis bar/line chart visualizing the inverse correlation 
+    between computational overhead (latency) and system security (leakage rate).
     """
     def calc_leak_rate(x):
         return (len(x[x["Hybrid_Verdict"] == "LEAK"]) / len(x)) * 100
@@ -335,6 +337,7 @@ def plot_latency_safety_tradeoff(df):
     width = 0.5 
     bar_colors = [PALETTE[m] for m in stats.index]
     
+    # Latency Bars
     bars = ax1.bar(x, stats["Total_Latency_ms"], width, 
                    yerr=stats["Latency_Generation_ms"], capsize=5,
                    color=bar_colors, alpha=0.8, edgecolor='black', zorder=2)
@@ -345,6 +348,7 @@ def plot_latency_safety_tradeoff(df):
     ax1.set_ylim(bottom=0, top=stats["Total_Latency_ms"].max() * 1.3)
     ax1.grid(axis='y', linestyle='--', alpha=0.3, zorder=0)
 
+    # Leakage Rate Line overlay
     ax2 = ax1.twinx()
     ax2.set_ylim(0, 110)
     
@@ -364,11 +368,12 @@ def plot_latency_safety_tradeoff(df):
     outfile = os.path.join(OUTPUT_DIR, "Figure_Latency_Safety_Tradeoff.png")
     plt.savefig(outfile, dpi=600, bbox_inches='tight') 
     plt.close()
-    print(f" >> [Plot] Generated Latency-Safety Figure: {outfile}")
+    print(f" >> [Plot] Generated Latency-Safety Vector: {outfile}")
 
 def plot_leakage_rate(df):
     """ 
-    Figure: Cross-Context Leakage Rate (Global)
+    Renders a standard bar chart depicting the global leakage 
+    vulnerability of the tested architectures.
     """
     threats = df[df["Prompt_Category"] != "General"]
     if len(threats) == 0: return
@@ -409,11 +414,12 @@ def plot_leakage_rate(df):
     outfile = os.path.join(OUTPUT_DIR, "Figure_Leakage_Rate_Global.png")
     plt.savefig(outfile, dpi=600, bbox_inches='tight')
     plt.close()
-    print(f" >> [Plot] Generated Global Leakage Figure: {outfile}")
+    print(f" >> [Plot] Generated Global Leakage Vector: {outfile}")
 
 def plot_category_breakdown(df):
     """
-    Figure: Leakage Rate by Attack Category
+    Renders a clustered bar chart decomposing architectural vulnerability 
+    across specific adversarial attack vectors.
     """
     if "Prompt_Category" not in df.columns: return
     threats = df[df["Prompt_Category"] != "General"]
@@ -453,11 +459,12 @@ def plot_category_breakdown(df):
     outfile = os.path.join(OUTPUT_DIR, "Figure_Leakage_By_Category.png")
     plt.savefig(outfile, dpi=600, bbox_inches='tight')
     plt.close()
-    print(f" >> [Plot] Generated Category Breakdown Figure: {outfile}")
+    print(f" >> [Plot] Generated Category Breakdown Vector: {outfile}")
 
 def plot_scalability_trends(df):
     """ 
-    Figure: Scalability Trends
+    Renders a scatter plot with linear regression overlays to demonstrate 
+    how architectural latency scales with output complexity.
     """
     plt.figure(figsize=(7.16, 4))
     
@@ -489,36 +496,42 @@ def plot_scalability_trends(df):
     outfile = os.path.join(OUTPUT_DIR, "Figure_Scalability_Trends.png")
     plt.savefig(outfile, dpi=600, bbox_inches='tight')
     plt.close()
-    print(f" >> [Plot] Generated Scalability Figure: {outfile}")
+    print(f" >> [Plot] Generated Scalability Vector: {outfile}")
 
 def main():
+    """
+    Executes the master visualization and analytics pipeline.
+    """
     if not os.path.exists(OUTPUT_DIR):
         try: os.makedirs(OUTPUT_DIR)
         except: pass
         
     if not os.path.exists(LOG_FILE):
-        print(f" [ERROR] Audit Results file not found: {LOG_FILE}")
-        print(f" [INFO] Please run 'src/evaluate_privacy_audit.py' first.")
+        print(f" [CRITICAL ERROR] Target Audit Data not found: {LOG_FILE}")
+        print(f" [REMEDIATION] Ensure the telemetry logs exist or verify the provided path.")
         return
 
     try:
+        print(f" >> [System] Initializing Data Synthesis Pipeline using: {LOG_FILE}")
         df = pd.read_csv(LOG_FILE)
         
-        # 1. Tables (Data Generation)
+        # 1. Tabular Data Serialization
         generate_config_table(df)
         generate_baseline_table(df)
         generate_stats_table(df)
         generate_firewall_table(df)
         generate_category_table(df)
         
-        # 2. Figures (High Res)
+        # 2. High-Resolution Figure Generation
         plot_latency_safety_tradeoff(df)
         plot_leakage_rate(df)
         plot_category_breakdown(df)
         plot_scalability_trends(df)
         
+        print(f" >> [Success] All analytical artifacts serialized to '{OUTPUT_DIR}'")
+        
     except Exception as e:
-        print(f" [ERROR] Visualization failed: {e}")
+        print(f" [CRITICAL ERROR] Visualization pipeline failed: {e}")
         import traceback
         traceback.print_exc()
 

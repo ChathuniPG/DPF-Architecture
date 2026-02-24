@@ -1,30 +1,30 @@
 """
 System Registry (Architecture Control Plane)
 --------------------------------------------
-This module serves as the central state manager for the comparative evaluation (Ablation Study).
-It defines the feature flags for the distinct architectural modes, establishing the 
-experimental controls required to isolate the contribution of the Deterministic Privacy Firewall.
+This module serves as the central state manager and configuration registry 
+for the multi-agent orchestration framework. It utilizes a feature-flag 
+matrix to define distinct operational architectures, facilitating controlled 
+ablation testing and performance benchmarking.
 
-Architectural Modes:
-1. NAIVE_CONTROL (Negative Baseline):
-   - Routing: Semantic/Smart (Enabled).
+Supported Architectural Modes:
+1. NAIVE_CONTROL (Unmitigated Baseline):
+   - Routing: Semantic/Vector-based (Enabled).
    - Security: Disabled.
-   - Rationale: Represents a functionally competent but unsecured RAG system. 
-     Routing must be enabled to ensure retrieval occurs, thereby isolating 
-     leakage to "Context Collision" rather than retrieval incompetence.
+   - Function: Establishes a baseline for uncontrolled semantic retrieval, 
+     allowing measurement of raw context collision rates without architectural guards.
 
-2. STANDARD_POSTHOC (Industry Baseline):
-   - Routing: Semantic/Smart.
-   - Security: Reactive (Output Filtering).
-   - Rationale: Represents current "Guardrails" paradigms where sensitive data 
-     enters the generation context, and regex/heuristic filters attempt 
-     to sanitize the output stream.
+2. STANDARD_POSTHOC (Reactive Security Baseline):
+   - Routing: Semantic/Vector-based.
+   - Security: Reactive (Post-Generation Output Filtering).
+   - Function: Simulates traditional 'generate-then-filter' pipelines where 
+     sensitive context enters the generative model, and sanitization relies on 
+     probabilistic or heuristic output scanning.
 
-3. DPF_PROPOSED (Experimental Condition):
-   - Routing: Semantic/Smart.
-   - Security: Proactive (Input Sanitization + Access Control).
-   - Rationale: Represents the proposed architecture enforcing Information Flow Control (IFC)
-     before context construction.
+3. DPF_PROPOSED (Pre-Generation Enforcement):
+   - Routing: Semantic/Vector-based.
+   - Security: Proactive (Input Sanitization + Strict Access Control).
+   - Function: Represents a zero-trust architecture enforcing deterministic 
+     Information Flow Control (IFC) prior to context window construction.
 """
 
 # Global State Variable (Default = DPF_PROPOSED)
@@ -32,10 +32,11 @@ _current_mode = "DPF_PROPOSED"
 
 def set_system_mode(mode_name):
     """
-    Updates the active system architecture state for the experimental run.
+    Updates the active system architecture state for the execution runtime.
     
     Args:
-        mode_name (str): The target mode ('DPF_PROPOSED', 'STANDARD_POSTHOC', 'NAIVE_CONTROL').
+        mode_name (str): The target architectural mode 
+                         ('DPF_PROPOSED', 'STANDARD_POSTHOC', 'NAIVE_CONTROL').
     
     Raises:
         ValueError: If an undefined architectural mode is requested.
@@ -52,22 +53,26 @@ def set_system_mode(mode_name):
 def get_system_config():
     """
     Returns the feature flag matrix for the currently active architecture.
+    This configuration dictates the control flow within the Orchestrator.
+    
+    Returns:
+        dict: A dictionary mapping architectural features to boolean states.
     """
     # --- MODE A: PROPOSED ARCHITECTURE (Zero Trust / Pre-Computation) ---
     if _current_mode == "DPF_PROPOSED":
         return {
             "system_label": "DPF_PROPOSED",
             
-            # [Core Routing] Vector Similarity enabled for high-fidelity retrieval
+            # [Core Routing] Vector Similarity enabled for high-fidelity intent matching
             "enable_smart_routing": True,
             
-            # [Innovation] O(1) Deterministic Firewall enforces policy BEFORE generation
+            # [Structural Enforcement] Deterministic Firewall enforces policy BEFORE generation
             "enable_pre_generation_firewall": True,  
             
-            # [Defense-in-Depth] Secondary output filter acts as a fail-safe
+            # [Defense-in-Depth] Secondary output filter acts as an egress fail-safe
             "enable_post_generation_filter": True,   
             
-            # [Control Plane] Real-time risk scoring for context switching
+            # [Control Plane] Real-time risk scoring for dynamic context switching
             "enable_active_guardrails": True,
             
             # [Optimization] Context pruning to minimize token window saturation
@@ -83,13 +88,13 @@ def get_system_config():
             
             "enable_smart_routing": True,
             
-            # [Vulnerability Surface] Private data is allowed to enter the LLM Context Window
+            # [Vulnerability Surface] Private data is permitted to enter the LLM Context Window
             "enable_pre_generation_firewall": False, 
             
-            # [Latency Penalty] Sanitization occurs strictly after token generation (O(N))
+            # [Latency Penalty] Sanitization occurs strictly after token generation
             "enable_post_generation_filter": True,   
             
-            # Disabled to isolate the specific performance of the Post-Hoc filter mechanism
+            # Disabled to strictly isolate the performance of the Post-Hoc filter mechanism
             "enable_active_guardrails": False, 
             
             "enable_context_pruning": True
@@ -101,17 +106,16 @@ def get_system_config():
         return {
             "system_label": "NAIVE_CONTROL",
             
-            # [CRITICAL EXPERIMENTAL CONFIGURATION] 
-            # Smart Routing is SET TO TRUE. 
-            # Scientific Justification: To accurately measure 'Context Collision,' the system 
-            # must be competent enough to retrieve the sensitive memory. If routing were 
-            # random (False), a non-leak might occur simply because the agent failed to 
-            # find the data (Retrieval Error) rather than because it was secure.
-            # We enable routing to ensure that any absence of leakage is due to luck, 
-            # not incompetence, eliminating False Negatives.
+            # [CRITICAL EVALUATION CONFIGURATION] 
+            # Smart Routing is ENABLED. 
+            # Architectural Justification: To accurately measure 'Context Collision,' the system 
+            # must be structurally competent enough to retrieve the sensitive memory. If routing 
+            # were random, a non-leak might occur simply because the agent failed to find the 
+            # data (Retrieval Error) rather than because it was secured. Enabling routing 
+            # eliminates False Negatives in security benchmarking.
             "enable_smart_routing": True,
             
-            # [Ablation] All security layers disabled to measure raw leakage rates
+            # [Ablation] All security layers disabled to measure raw semantic leakage rates
             "enable_pre_generation_firewall": False,
             "enable_post_generation_filter": False,
             "enable_active_guardrails": False,
