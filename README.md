@@ -14,12 +14,8 @@ To ensure strict zero-shot reproducibility and avoid dependency conflicts, pleas
 
 * **Python (v3.13.5):** Required for specific LangChain and FAISS Vector DB compatibility.
 * 🔗 [Download Python 3.13 here](https://www.python.org/downloads/)
-
-
 * **Ollama Engine:** Required for local, privacy-preserving LLM inference.
 * 🔗 [Download Ollama here](https://ollama.com/download)
-
-
 * **LLM Model:** We utilize the 4-bit quantized **Llama-3-8B-Instruct** model to balance computational efficiency with high-fidelity reasoning.
 
 ### B. Setup Instructions
@@ -35,12 +31,12 @@ ollama run llama3
 *(Note: This automatically downloads the exact `Llama-3-8B-Instruct (4-bit)` model used in our manuscript's evaluation).*
 
 **Step 2: Acquire the Repository**
-If you are accessing this artifact via our **Zenodo DOI**, simply download the provided `.zip` archive and extract it to your local machine.
+Download the provided `.zip` archive and extract it to your local machine.
 
 Alternatively, if accessing via Git:
 
 ```bash
-git clone <your-repo-link>
+git clone <provided-repository-url>
 
 ```
 
