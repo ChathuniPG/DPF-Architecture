@@ -180,23 +180,15 @@ cython_debug/
 .cursorignore
 .cursorindexingignore 
 
-# --- HiMeCoPS Project Specific --- 
+# --- DPF Project Specific --- 
 
 # --- Runtime Data (Auto-Generated) ---
 # Fresh experiment logs 
 logs/ 
 # Vector DB indices 
+
 memory_data/ 
 *.log
 
-# --- Thesis Artifacts Management ---
-# 1. Ignore the dynamic paper_results folder content...
-paper_results/*
-
-# 2. BUT forcefully keep your frozen Thesis Evidence files:
-!paper_results/manuscript_statistics_report.txt
-!paper_results/validation_results_thesis_snapshot.csv
-!paper_results/*.png
-
-# 3. AND keep the Golden Dataset (Input)
-!src/data/experiment_data_annotated.csv
+# Paper results
+paper_results/
