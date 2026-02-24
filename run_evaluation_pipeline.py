@@ -22,6 +22,7 @@ def run_external_script(script_name, description):
     """
     Helper function to execute external evaluation modules sequentially.
     Uses subprocess to ensure strict memory/state isolation between tests.
+    Returns True if successful, False if the subprocess crashes.
     """
     print(f"\n{'-'*60}")
     print(f"   PHASE: {description}")
@@ -29,18 +30,18 @@ def run_external_script(script_name, description):
     
     script_path = os.path.join(os.path.dirname(__file__), script_name)
     if not os.path.exists(script_path):
-        # Fallback to checking inside 'src/' depending on repository structure
         script_path = os.path.join(os.path.dirname(__file__), 'src', script_name)
         
     try:
         subprocess.check_call([sys.executable, script_path])
+        return True
     except subprocess.CalledProcessError as e:
         print(f" !! [CRITICAL ERROR] Phase '{description}' failed with exit code {e.returncode}.")
-        # We do not sys.exit(1) here to allow graceful continuation if a statistical 
-        # module fails due to micro-dataset constraints during testing.
+        # Return False to flag that the pipeline is degraded, but allow continuation
+        return False
     except FileNotFoundError:
         print(f" !! [CRITICAL ERROR] Script '{script_name}' not found.")
-        sys.exit(1)
+        return False
 
 def main():
     # --- 1. BOOT SEQUENCE ---
@@ -49,12 +50,10 @@ def main():
     print("      ARCHITECTURE: END-TO-END EVALUATION PIPELINE        ")
     print("==========================================================")
     
-    # Add root and 'src' to path to allow direct module imports
     sys.path.append(os.path.dirname(__file__))
     sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
     
     try:
-        # Import core architectural components
         import system_registry as registry
         import experiment_driver as test_harness
     except ImportError as e:
@@ -67,31 +66,22 @@ def main():
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
 
-    # File paths
     eval_log_file = os.path.join(log_dir, "experiment_data.csv")
     interactive_log_file = os.path.join(log_dir, "system_telemetry.csv")
     backup_log_file = os.path.join(log_dir, "system_telemetry.backup")
 
-    # Step A: Protect user's interactive debug data by temporarily renaming it
     if os.path.exists(interactive_log_file):
         print(" >> [Setup] Archiving interactive session telemetry...")
         os.rename(interactive_log_file, backup_log_file)
 
-    # Step B: Purge old evaluation data to prevent cross-contamination
     if os.path.exists(eval_log_file):
         print(f" >> [Setup] Clearing previous evaluation telemetry: {eval_log_file}")
         os.remove(eval_log_file)
 
     # --- 3. ADVERSARIAL EXPERIMENT EXECUTION ---
-    # We evaluate the Control group, the Industry Standard, and the Proposed Architecture.
-    study_sequence = [
-        "NAIVE_CONTROL",     # Negative Control (Upper Bound Risk)
-        "STANDARD_POSTHOC",  # Competitor Baseline (Industry Standard)
-        "DPF_PROPOSED"       # Proposed Solution (Experimental Condition)
-    ]
-    
+    study_sequence = ["NAIVE_CONTROL", "STANDARD_POSTHOC", "DPF_PROPOSED"]
     global_counter = 0
-    total_trials = 1200 # Default full-scale target
+    pipeline_errors = False  # Track overall health
     
     print(f"\n [System] Initiating Adversarial Stress Test Sequence...")
     
@@ -100,64 +90,72 @@ def main():
         print(f"   PHASE: Adversarial Testing -> {mode}")
         print(f"{'-'*60}")
         
-        # A. State Enforcement
         try:
             registry.set_system_mode(mode)
         except ValueError as e:
             print(f" !! [ERROR] Configuration Failure: {e}")
             sys.exit(1)
         
-        # B. Execute Stress Test
-        # test_harness intrinsically writes to 'system_telemetry.csv'
-        global_counter = test_harness.run_batch(mode, global_start_count=global_counter)
-        print(f" >> [Phase Complete] {mode} finished. Current Vector Count: {global_counter}")
-        
-        time.sleep(1) # Cool-down to ensure OS file I/O flush
+        try:
+            global_counter = test_harness.run_batch(mode, global_start_count=global_counter)
+            print(f" >> [Phase Complete] {mode} finished. Current Vector Count: {global_counter}")
+        except Exception as e:
+            print(f" !! [ERROR] Stress test failed for {mode}: {e}")
+            pipeline_errors = True
+            
+        time.sleep(1)
 
     # --- 3.5. DATASET NORMALIZATION & RESTORATION ---
     print(f"\n >> [System] Normalizing data streams...")
     
-    # Siphon the newly generated telemetry into the official evaluation file
     if os.path.exists(interactive_log_file):
         os.rename(interactive_log_file, eval_log_file)
-        print(f" >> [System] Evaluation data successfully isolated to 'experiment_data.csv'.")
-    
-    # Restore the user's interactive debugging file so it isn't lost
+        
     if os.path.exists(backup_log_file):
         os.rename(backup_log_file, interactive_log_file)
-        print(f" >> [System] Interactive telemetry successfully restored.")
 
-    # Validate dataset size for statistical viability
+    # Validate dataset size
     if os.path.exists(eval_log_file):
         with open(eval_log_file, 'r', encoding='utf-8') as f:
-            row_count = sum(1 for row in f) - 1 # Subtract header
+            row_count = sum(1 for row in f) - 1
             if row_count < 20:
                 print("\n" + "!"*60)
                 print(" [WARNING] MICRO-DATASET DETECTED (N < 20)")
-                print(" Downstream statistical modules (Mann-Whitney, Polyfit Regression)")
-                print(" require higher variance to compute. Chart generation may gracefully")
-                print(" abort if mathematical constraints are not met.")
+                print(" Downstream statistical modules require higher variance to compute.")
                 print("!"*60)
 
     # --- 4. EXTENDED PIPELINE EXECUTION ---
-    # Trigger all supplementary evaluation modules in a strict, deterministic sequence
-    
-    run_external_script("run_utility_benchmark.py", "Benign Utility & False Refusal Audit (N=300)")
-    run_external_script("evaluate_privacy_audit.py", "Hybrid Privacy Auditor (Semantic Leakage Detection)")
-    run_external_script("run_auditor_ablation.py", "Failure Mode Attribution Analysis")
-    run_external_script("visualization_engine.py", "Data Synthesis & Figure Generation")
+    # Track the success of each external module
+    if not run_external_script("run_utility_benchmark.py", "Benign Utility & False Refusal Audit"):
+        pipeline_errors = True
+        
+    if not run_external_script("evaluate_privacy_audit.py", "Hybrid Privacy Auditor"):
+        pipeline_errors = True
+        
+    if not run_external_script("run_auditor_ablation.py", "Failure Mode Attribution"):
+        pipeline_errors = True
+        
+    if not run_external_script("visualization_engine.py", "Data Synthesis & Figure Generation"):
+        pipeline_errors = True
 
     # --- 5. PIPELINE TERMINATION ---
     output_dir = "paper_results"
     
     print("\n" + "="*60)
-    print("      [SUCCESS] REPRODUCIBILITY PIPELINE COMPLETE")
-    print("="*60)
-    print(f" >> Raw Telemetry stored in:  /logs")
-    print(f" >> Final Artifacts saved in: /{output_dir}")
-    print("    - Table_Baseline_Comparison.csv")
-    print("    - Figure_Latency_Safety_Tradeoff.png")
-    print("    - Figure_Leakage_Rate_Global.png")
+    # Dynamically adjust the final readout based on system health
+    if pipeline_errors:
+        print("      [FAILED] PIPELINE COMPLETED WITH CRITICAL ERRORS")
+        print("="*60)
+        print(" >> Please review the terminal output above for missing libraries or missing data files.")
+    else:
+        print("      [SUCCESS] REPRODUCIBILITY PIPELINE COMPLETE")
+        print("="*60)
+        print(f" >> Raw Telemetry stored in:  /logs")
+        print(f" >> Final Artifacts saved in: /{output_dir}")
+        print("    - Table_Baseline_Comparison.csv")
+        print("    - Figure_Latency_Safety_Tradeoff.png")
+        print("    - Figure_Leakage_Rate_Global.png")
+        
     print("\n[System] Pipeline Shutdown. Goodbye.")
 
 if __name__ == "__main__":

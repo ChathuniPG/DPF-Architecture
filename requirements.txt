@@ -93,3 +93,6 @@ watchdog==6.0.0
 xxhash==3.6.0
 yarl==1.22.0
 zstandard==0.25.0
+sentence-transformers==3.0.1
+torch==2.6.0
+tqdm==4.66.4

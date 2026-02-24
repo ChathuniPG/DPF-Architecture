@@ -24,7 +24,9 @@ def check_dependencies():
     try:
         import pandas               # Data manipulation for telemetry
         import matplotlib           # Visualization generation
+        import torch                # Neural network backend (Crucial for Mac)
         import sentence_transformers # NLI Auditing
+        import tqdm                 # Progress tracking
         import langchain            # Orchestration framework
         
         # Note: 'faiss' is often installed as 'faiss-cpu' but imported as 'faiss'
@@ -125,7 +127,7 @@ def main():
             print("\n   >> Generating metrics from Immutable Reference Logs...\n")
             if not os.path.exists(paper_logs_path) or not os.path.exists(utility_logs_path):
                 print(f"   !! [ERROR] Immutable logs not found in 'src/data/paper_logs/'.")
-                print("      Ensure both 'audit_results.csv' and 'ablation_utility_audit.csv' are securely placed.")
+                print("       Ensure both 'audit_results.csv' and 'ablation_utility_audit.csv' are securely placed.")
             else:
                 # Pass the protected paths dynamically to the downstream analytical scripts
                 run_module("run_utility_benchmark.py", [utility_logs_path])
@@ -158,7 +160,7 @@ def main():
             print("\n   >> Executing Human-in-the-Loop Validation...\n")
             if not os.path.exists(human_logs_path):
                 print(f"   !! [ERROR] Human Ground Truth not found at: {human_logs_path}")
-                print("      Ensure 'human_audit_set.csv' is securely placed in 'src/data/paper_logs/'.")
+                print("       Ensure 'human_audit_set.csv' is securely placed in 'src/data/paper_logs/'.")
             else:
                 run_module("calculate_audit_metrics.py", [human_logs_path])
             input("\n   [Press Enter to return to menu]")

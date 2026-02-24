@@ -31,21 +31,18 @@ ollama run llama3
 *(Note: This automatically downloads the exact `Llama-3-8B-Instruct (4-bit)` model used in our manuscript's evaluation).*
 
 **Step 2: Acquire the Repository**
-Download the provided `.zip` archive and extract it to your local machine.
+Access the repository via the secure reviewer link provided in the manuscript.
 
-Alternatively, if accessing via Git:
-
-```bash
-git clone <provided-repository-url>
-
-```
-
-Navigate into the root directory:
+1. Click the **Download ZIP** option on the web interface to download the repository archive.
+2. Extract the `.zip` file to your local machine.
+3. Open your terminal or command prompt and navigate into the extracted root directory:
 
 ```bash
 cd DPF-ARCHITECTURE
 
 ```
+
+*(Note: Depending on your extraction tool, the folder might be named slightly differently, such as `DPF-ARCHITECTURE-main`. Please ensure your terminal is inside the folder containing `run_system.py`).*
 
 **Step 3: Configure the Python Environment**
 We highly recommend isolating dependencies using a virtual environment. **Please ensure you have an active internet connection** so the package manager can download the required libraries.
@@ -59,7 +56,7 @@ source venv/bin/activate
 # For Windows:
 venv\Scripts\activate
 
-# Install dependencies (Our CLI will also auto-attempt this if skipped)
+# Install dependencies
 pip install -r requirements.txt
 
 ```
@@ -156,3 +153,5 @@ DPF-ARCHITECTURE/
 ### 🔒 Note on Ephemeral Directories
 
 To maintain a clean repository footprint, the folders `logs/`, `memory_data/`, and `paper_results/` are ignored via `.gitignore` (if cloning via Git). They are **dynamically created at runtime** by `run_system.py` to store temporary session states, active telemetry, and final graphical artifacts. Your exact, manuscript-matching reference data is safely protected inside `src/data/paper_logs/`.
+
+---
