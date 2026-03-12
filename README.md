@@ -31,18 +31,18 @@ ollama run llama3
 *(Note: This automatically downloads the exact `Llama-3-8B-Instruct (4-bit)` model used in our manuscript's evaluation).*
 
 **Step 2: Acquire the Repository**
-Access the repository via the secure reviewer link provided in the manuscript.
+Access the repository via the permanent Zenodo DOI link provided in the manuscript's Cover Letter and Data Availability statement.
 
-1. Click the **Download ZIP** option on the web interface to download the repository archive.
-2. Extract the `.zip` file to your local machine.
-3. Open your terminal or command prompt and navigate into the extracted root directory:
+1. Scroll to the **Files** section at the bottom of the Zenodo record.
+2. Download the `DPF-ARCHITECTURE.zip` archive to your local machine.
+3. Extract the archive, open your terminal or command prompt, and navigate into the extracted root directory:
 
 ```bash
 cd DPF-ARCHITECTURE
 
 ```
 
-*(Note: Depending on your extraction tool, the folder might be named slightly differently, such as `DPF-ARCHITECTURE-main`. Please ensure your terminal is inside the folder containing `run_system.py`).*
+*(Note: Please ensure your terminal is inside the folder containing `run_system.py`).*
 
 **Step 3: Configure the Python Environment**
 We highly recommend isolating dependencies using a virtual environment. **Please ensure you have an active internet connection** so the package manager can download the required libraries.
@@ -80,7 +80,7 @@ Upon execution, you will be presented with a terminal UI containing the followin
 
 ### 🐢 Option 2: Re-run Full Evaluation Pipeline (Slow Path)
 
-Executes the complete $N=1500$ ablation study (1200 Adversarial + 300 Benign trials).
+Executes the complete N=1500 architectural ablation study. This comprises the core N=500 prompt dataset (400 Adversarial + 100 Benign) executed across all **3 system baselines** (Naive Shared-Memory -> Post-Hoc Filter -> DPF Architecture).
 
 * **Warning:** Requires ~15+ hours of continuous GPU/CPU compute.
 * **Note:** Due to the inherent stochasticity of generative LLMs, exact statistical metrics will fluctuate slightly from the published manuscript if re-run. Output is safely routed to the `/logs` directory to prevent overwriting our immutable paper artifacts.
@@ -147,6 +147,7 @@ DPF-ARCHITECTURE/
     ├── system_registry.py        # Ablation state controller (Naive vs PostHoc vs DPF)
     ├── view_memory.py            # Diagnostic tool to read isolated vector indices
     └── visualization_engine.py   # Renders matplotlib charts and final CSV tables
+
 
 ```
 
