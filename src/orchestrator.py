@@ -277,7 +277,7 @@ class Orchestrator:
         """
         if not user_input.strip(): return "System", "Input was empty."
 
-        # Metrics & Telemetry Accumulators
+        # Metrics & Telemetry Accumulatorsr
         lat_firewall = 0.0
         total_redactions = 0
         intervention_active = False
@@ -411,7 +411,7 @@ class Orchestrator:
         response, lat_generation = agent_engine.generate_response(winner, user_input, context_data, current_mode)
 
         # 3. Pipeline Stage: Egress Filtering (Defense-in-Depth)
-        if self.config["enable_post_generation_filter"]:
+        if self.config["enable_post_generation_filter"] and current_mode != "PRIVATE":
             print("    [DPF] Egress Filter: ACTIVE")
             t0 = time.perf_counter()
             fw_result = self.firewall.evaluate(response)

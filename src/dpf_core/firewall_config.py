@@ -65,7 +65,7 @@ FIREWALL_RULES = [
     ("FIN_LEDGER", r'\b(?:tuition|student)\s{1,5}ledger\b|T\s?u\s?i\s?t\s?i\s?o\s?n\s{1,5}L\s?e\s?d\s?g\s?e\s?r', "[FINANCIAL_DOC]"),
     
     # [Target]: Institutional Status Indicators
-    ("FIN_STATUS", r'\b(overdue|outstanding|unpaid)\b|O_v_e_r_d_u_e', "[FINANCIAL_STATUS]"),
+    ("FIN_STATUS", r'\b(?i:overdue|outstanding|unpaid|negative)\b|O_v_e_r_d_u_e', "[FINANCIAL_STATUS]"),
     ("FIN_HOLD", r'\bfinancial\s{1,5}hold\b', "[FINANCIAL_STATUS]"),
     ("FIN_BLOCK", r'\bRegistration\s{1,5}blocked\b', "[REGISTRATION_HOLD]"),
     
@@ -83,15 +83,11 @@ FIREWALL_RULES = [
     ("ACAD_DOB", r'\b(?:DOB:?|born)\s{0,5}(?:2005-01-01|\d{4}-\d{2}-\d{2})\b', "[DOB_REDACTED]"),
     ("ACAD_ADDRESS", r'\b123\s{1,5}Campus\s{1,5}Dr\b|A\s?d\s?d\s?r\s?e\s?s\s?s', "[ADDRESS_REDACTED]"),
 
-    # [Target]: Explicit Grade Assignments (Context-Aware)
-    # Employs bounded non-capturing groups to capture complex sentence structures 
-    # without triggering catastrophic backtracking algorithms.
-    ("ACAD_GRADE_SENTENCE_FULL", r'grade\s{1,5}(?:in|for|is|was|currently|of)?\s{0,5}(?:\w+\s{0,5}){0,3}\s{0,5}(?:[A-F]|Fail|Pass|Failing|Passing)(?:\s{0,5}\((?:Fail|Pass)\))?\b', "[GRADE_ASSIGNMENT_FULL]"),
+    # [Target]: Explicit Grade Assignments
+    ("ACAD_GRADE_SENTENCE_FULL", r'\b[Gg]rade\s{1,5}(?:in|for|is|was|currently|of)?\s{0,5}(?:\w+\s{0,5}){0,4}\b(?:[A-F]|Fail|Pass|Failing|Passing)\b(?:\s{0,5}\((?:Fail|Pass)\))?', "[GRADE_ASSIGNMENT_FULL]"),
     
     # [Target]: Standalone Grades (Subject-Anchored)
-    # Anchored specifically to academic domains to aggressively reduce False Positives 
-    # (e.g., matching "Math: F" but ignoring "Press F to pay respects").
-    ("ACAD_GRADE_STANDALONE", r'\b(History|Math|Biology)\s{0,5}(?:Grade)?\s{0,5}(?::|is)\s{0,5}([A-F]|Fail)\b', "[COURSE_GRADE]"),
+    ("ACAD_GRADE_STANDALONE", r'\b(?:History|Math|Biology)\s{0,5}(?:[Gg]rade)?\s{0,5}(?::|is|stands\s{1,5}at\s{1,5}an?)\s{0,5}\b([A-F]|Fail)\b', "[COURSE_GRADE]"),
 
     ("ACAD_TRANSCRIPT_CONTENT", r'\w+:\s{0,5}[A-F][+-]?', "[COURSE_GRADE]"),
     ("ACAD_SCORE_NUMERIC", r'\b42\s{0,3}/\s{0,3}100\b|\b\d{1,3}\s{0,3}/\s{0,3}100', "[NUMERIC_SCORE]"),

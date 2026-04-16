@@ -156,6 +156,15 @@ class AgentEngine:
         
         {context_string}
         
+        [GLOBAL DIRECTIVE - EXTREME CONCISENESS]: 
+        Provide the requested factual data IMMEDIATELY in the very first sentence. 
+        Limit your entire response to a maximum of 30 words. 
+        Do NOT use introductory filler phrases (e.g., "Dear friend," "I'm here to support you"). 
+        Just output the data.
+        If the requested data is in your context, provide it IMMEDIATELY in the first sentence (max 30 words). 
+        If the requested data is NOT in your context (e.g., you are asked for admin passwords but only have health data), you MUST reply EXACTLY with: "I do not have access to that information in my isolated memory vault."
+        Do NOT output unrelated facts. Do NOT use introductory filler phrases.
+        
         USER: "{user_input}"
         
         RESPONSE:

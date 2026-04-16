@@ -25,7 +25,6 @@ Ensure Ollama is installed and running in the background. Open a terminal and ex
 
 ```bash
 ollama run llama3
-
 ```
 
 *(Note: This automatically downloads the exact `Llama-3-8B-Instruct (4-bit)` model used in our manuscript's evaluation).*
@@ -39,10 +38,9 @@ Access the repository via the permanent Zenodo DOI link provided in the manuscri
 
 ```bash
 cd DPF-ARCHITECTURE
-
 ```
 
-*(Note: Please ensure your terminal is inside the folder containing `run_system.py`).*
+*(Note: Please ensure your terminal is inside the folder containing `run_system.py` and `app.py`).*
 
 **Step 3: Configure the Python Environment**
 We highly recommend isolating dependencies using a virtual environment. **Please ensure you have an active internet connection** so the package manager can download the required libraries.
@@ -56,46 +54,48 @@ source venv/bin/activate
 # For Windows:
 venv\Scripts\activate
 
-# Install dependencies
+# Install core dependencies
 pip install -r requirements.txt
 
+# Ensure Streamlit is installed for the Web UI
+pip install streamlit
 ```
 
 ---
 
-## 🚀 2. System Execution Guide (Reviewer CLI)
+## 🚀 2. System Execution Guide 
 
-We have engineered a "Zero-Friction" entry point. Reviewers do not need to manually chain scripts together. **Everything is orchestrated through a single command:**
+We provide two primary ways to interact with the DPF system: a rich Graphical User Interface (GUI) and a comprehensive Reviewer CLI.
+
+### 🖥️ Option A: Graphical Web Interface (Streamlit)
+
+We have engineered a comprehensive graphical observability dashboard. This allows you to interact with the agents in real-time, execute the automated pipelines, synthesize artifacts, and inspect vector databases directly from your browser. 
+
+To launch the dashboard, run:
+```bash
+streamlit run app.py
+```
+
+### ⌨️ Option B: Reviewer CLI (Terminal Interface)
+
+Alternatively, you can utilize our "Zero-Friction" terminal entry point. Reviewers do not need to manually chain scripts together. Everything is orchestrated through a single command:
 
 ```bash
 python run_system.py
-
 ```
 
 Upon execution, you will be presented with a terminal UI containing the following options:
 
-### ⚡ Option 1: Generate Reference Figures & Tables (Fast Path)
-
-**Recommended for Reviewers.** This instantly generates all publication-ready `.csv` tables and `.png` charts into the `/paper_results` folder. It bypasses the 15-hour computational loop by utilizing the immutable reference telemetry (`src/data/paper_logs/`) captured during the manuscript's original stress tests.
-
-### 🐢 Option 2: Re-run Full Evaluation Pipeline (Slow Path)
-
-Executes the complete N=1500 architectural ablation study. This comprises the core N=500 prompt dataset (400 Adversarial + 100 Benign) executed across all **3 system baselines** (Naive Shared-Memory -> Post-Hoc Filter -> DPF Architecture).
-
-* **Warning:** Requires ~15+ hours of continuous GPU/CPU compute.
-* **Note:** Due to the inherent stochasticity of generative LLMs, exact statistical metrics will fluctuate slightly from the published manuscript if re-run. Output is safely routed to the `/logs` directory to prevent overwriting our immutable paper artifacts.
-
-### 💬 Option 3: Interactive Debug Console (Human-in-the-Loop)
-
-Opens a Read-Eval-Print Loop (REPL) allowing you to chat with the multi-agent system in real-time. You can manually test the semantic router, observe the deterministic firewall, and switch between `Group` (Broadcast) and `Private` (Dyadic) topologies using slash commands (e.g., `/help`, `/private Emma`).
-
-### 🗄️ Option 4: Inspect Vector Database State
-
-Provides a read-only audit of the isolated FAISS memory partitions to verify that strict memory segregation is being enforced between domain agents.
-
-### 📊 Option 5: Validate Auditor Accuracy (Cohen's Kappa)
-
-Runs the statistical validation suite comparing our automated AI Hybrid Privacy Auditor (HPA) against Human-in-the-Loop ground-truth labels, generating the Inter-Rater Reliability metrics found in the paper.
+* **Option 1: Generate Reference Figures & Tables (Fast Path)**
+    **Recommended for Reviewers.** Instantly generates all publication-ready `.csv` tables and `.png` charts into the `/paper_results` folder. Bypasses the 15-hour loop by utilizing immutable reference telemetry (`src/data/paper_logs/`).
+* **Option 2: Re-run Full Evaluation Pipeline (Slow Path)**
+    Executes the complete N=1500 architectural ablation study. *Warning: Requires ~15+ hours of continuous compute.* Output is routed to the `/logs` directory to prevent overwriting paper artifacts.
+* **Option 3: Interactive Debug Console (Human-in-the-Loop)**
+    Opens a terminal REPL allowing real-time chat with the multi-agent system. Test the semantic router and firewall using slash commands (e.g., `/help`, `/private Emma`).
+* **Option 4: Inspect Vector Database State**
+    Provides a read-only terminal audit of the isolated FAISS memory partitions to verify strict memory segregation.
+* **Option 5: Validate Auditor Accuracy (Cohen's Kappa)**
+    Runs the statistical validation suite comparing the Hybrid Privacy Auditor (HPA) against Human-in-the-Loop ground-truth labels.
 
 ---
 
@@ -106,6 +106,7 @@ Below is the structural breakdown of the repository and the specific engineering
 ```text
 DPF-ARCHITECTURE/
 │
+├── app.py                        # Streamlit Graphical Dashboard (Web UI)
 ├── run_system.py                 # Primary Reviewer CLI & Environment Controller
 ├── run_evaluation_pipeline.py    # Master orchestrator for the 15-hour Slow Path test
 ├── requirements.txt              # Standardized pip dependencies
@@ -118,7 +119,7 @@ DPF-ARCHITECTURE/
 └── src/                          # Core System Source Code
     │
     ├── data/                     # Data Layer (Decoupled from logic)
-    │   ├── paper_logs/           # IMMUTABLE Ground Truth (Used by Option 1/Fast Path)
+    │   ├── paper_logs/           # IMMUTABLE Ground Truth (Used by Fast Path/UI)
     │   │   ├── ablation_utility_audit.csv
     │   │   ├── audit_results.csv 
     │   │   ├── experiment_data.csv 
@@ -138,7 +139,7 @@ DPF-ARCHITECTURE/
     ├── experiment_driver.py      # Adversarial execution harness
     ├── generate_dataset.py       # Utility script to build JSON testing vectors
     ├── human_audit.py            # Developer script for stratified human sampling
-    ├── interactive_console.py    # The Real-time Chat UI (Option 3)
+    ├── interactive_console.py    # The Real-time Chat UI (CLI Option 3)
     ├── memory_manager.py         # FAISS vector DB instantiation and wiping
     ├── metrics_logger.py         # Sub-millisecond telemetry capture
     ├── orchestrator.py           # The Semantic Router (Control Plane)
@@ -147,12 +148,10 @@ DPF-ARCHITECTURE/
     ├── system_registry.py        # Ablation state controller (Naive vs PostHoc vs DPF)
     ├── view_memory.py            # Diagnostic tool to read isolated vector indices
     └── visualization_engine.py   # Renders matplotlib charts and final CSV tables
-
-
 ```
 
 ### 🔒 Note on Ephemeral Directories
 
-To maintain a clean repository footprint, the folders `logs/`, `memory_data/`, and `paper_results/` are ignored via `.gitignore` (if cloning via Git). They are **dynamically created at runtime** by `run_system.py` to store temporary session states, active telemetry, and final graphical artifacts. Your exact, manuscript-matching reference data is safely protected inside `src/data/paper_logs/`.
+To maintain a clean repository footprint, the folders `logs/`, `memory_data/`, and `paper_results/` are ignored via `.gitignore` (if cloning via Git). They are **dynamically created at runtime** by `run_system.py` or `app.py` to store temporary session states, active telemetry, and final graphical artifacts. The immutable baseline reference data used for fast-path execution is safely protected inside `src/data/paper_logs/`.
 
 ---
