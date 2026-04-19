@@ -1,177 +1,161 @@
 """
-System Entry Point & Environment Controller
--------------------------------------------
-This script serves as the primary driver for the architecture repository.
-It acts as a CLI wrapper that:
-1. Validates the execution environment (dependency resolution & auto-install).
-2. Provides a Fast-Path to reproduce exact published figures from immutable logs.
-3. Provides a Slow-Path to completely re-run the 15+ hour evaluation pipeline.
-4. Encapsulates subprocess execution to ensure strict memory isolation.
+System Entry Point & Environment Controller — V2
+-------------------------------------------------
+Primary CLI driver for the DPF architecture repository.
+
+V2 Changes vs V1:
+- run_module() now resolves scripts using a priority search list:
+    1. project root
+    2. src/evaluation/   ← new location for evaluation harnesses
+    3. src/              ← legacy location (visualization_engine, etc.)
+  This ensures all menu options work correctly after the git mv refactor.
+- Menu text updated to reflect V2 new outputs (router_accuracy.csv,
+  threat_class_breakdown.csv).
 """
 
 import sys
 import os
 import subprocess
 
+
 def check_dependencies():
-    """
-    Environment Verification Routine.
-    Ensures all required engineering libraries are present before execution,
-    preventing mid-experiment crashes. Automatically installs missing packages.
-    """
-    print(f" >> [System] Python Executable: {sys.executable}")
-    print(" >> [System] Verifying environment dependencies...")
+    print(f" >> [System] Python: {sys.executable}")
+    print(" >> [System] Verifying dependencies...")
     try:
-        import pandas               # Data manipulation for telemetry
-        import matplotlib           # Visualization generation
-        import torch                # Neural network backend (Crucial for Mac)
-        import sentence_transformers # NLI Auditing
-        import tqdm                 # Progress tracking
-        import langchain            # Orchestration framework
-        
-        # Note: 'faiss' is often installed as 'faiss-cpu' but imported as 'faiss'
+        import pandas, matplotlib, torch, sentence_transformers, tqdm, langchain
         try:
             import faiss
         except ImportError:
-            pass # Faiss might be managed internally by LangChain, proceed with caution.
-            
-        print(" >> [System] All required dependencies are present.")
-        
+            pass
+        print(" >> [System] All dependencies present.")
     except ImportError as e:
-        print(f" >> [System] Missing library detected: {e}")
-        print(" >> [System] Attempting auto-installation from requirements.txt...")
+        print(f" >> [System] Missing: {e}")
+        print(" >> Attempting auto-install from requirements.txt...")
         try:
             if os.path.exists("requirements.txt"):
-                subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "-r", "requirements.txt"])
-                print(" >> [System] Auto-installation complete.")
+                subprocess.check_call(
+                    [sys.executable, "-m", "pip", "install", "-q", "-r", "requirements.txt"]
+                )
+                print(" >> Auto-install complete.")
             else:
-                print(" !! [Critical] requirements.txt not found. Please install dependencies manually.")
+                print(" !! requirements.txt not found.")
                 sys.exit(1)
         except Exception as e:
-            print(f" !! [Critical] Failed to install dependencies: {e}")
+            print(f" !! Install failed: {e}")
             sys.exit(1)
 
-def run_module(script_name, args=None):
+
+def run_module(script_name: str, args=None):
     """
-    Safely executes a target Python script via subprocess.
-    Allows passing dynamic arguments (like immutable file paths) to the child process.
+    Execute a script as an isolated subprocess.
+    V2: searches src/evaluation/ before src/ so moved harnesses resolve correctly.
     """
-    script_path = os.path.join(os.path.dirname(__file__), script_name)
-    if not os.path.exists(script_path):
-        script_path = os.path.join(os.path.dirname(__file__), 'src', script_name)
-        
-    cmd = [sys.executable, script_path]
-    if args:
-        cmd.extend(args)
-        
+    base = os.path.dirname(os.path.abspath(__file__))
+
+    candidates = [
+        os.path.join(base, script_name),
+        os.path.join(base, "src", "evaluation", script_name),
+        os.path.join(base, "src", script_name),
+    ]
+
+    script_path = None
+    for c in candidates:
+        if os.path.exists(c):
+            script_path = c
+            break
+
+    if script_path is None:
+        print(f" !! [ERROR] Script not found: {script_name}")
+        return
+
+    cmd = [sys.executable, script_path] + (args or [])
     try:
         subprocess.run(cmd)
     except KeyboardInterrupt:
-        print("\n [System] Execution interrupted by user.")
+        print("\n [System] Interrupted.")
+
 
 def main():
-    """
-    Main Execution Loop (Reviewer CLI Menu).
-    """
-    # 1. Pre-Flight Check
     check_dependencies()
-    
-    # Define the paths to the immutable reference data
-    paper_logs_path = os.path.join(os.path.dirname(__file__), "src", "data", "paper_logs", "audit_results.csv")
-    utility_logs_path = os.path.join(os.path.dirname(__file__), "src", "data", "paper_logs", "ablation_utility_audit.csv")
-    human_logs_path = os.path.join(os.path.dirname(__file__), "src", "data", "paper_logs", "human_audit_set.csv")
-    
+
+    base = os.path.dirname(os.path.abspath(__file__))
+    paper_logs = os.path.join(base, "src", "data", "paper_logs")
+    audit_csv  = os.path.join(paper_logs, "audit_results.csv")
+    utility_csv = os.path.join(paper_logs, "ablation_utility_audit.csv")
+    human_csv  = os.path.join(paper_logs, "human_audit_set.csv")
+
     while True:
         os.system('cls' if os.name == 'nt' else 'clear')
-        
-        print("==========================================================")
-        print("   MULTI-AGENT ARCHITECTURE: SYSTEM CONTROL INTERFACE     ")
-        print("==========================================================")
-        
-        # Option 1: The "Instant" Reproducibility Path
+
+        print("=" * 60)
+        print("   DPF ARCHITECTURE V2: SYSTEM CONTROL INTERFACE")
+        print("=" * 60)
         print("   [1] Generate Reference Figures & Tables (Fast Path)")
-        print("       > Uses immutable telemetry logs from /src/data/paper_logs.")
-        print("       > Instantly outputs identical CSVs and PNGs to /paper_results.")
+        print("       > Immutable logs from src/data/paper_logs/")
+        print("       > Instant CSV + PNG output to /paper_results/")
         print("")
-        
-        # Option 2: The Full End-to-End Run
         print("   [2] Re-run Full Evaluation Pipeline (Slow Path)")
-        print("       > WARNING: Takes ~15 hours (1200 Adversarial + 300 Benign trials).")
-        print("       > NOTE: Due to LLM stochastic variance, exact metrics will ")
-        print("         fluctuate slightly from the published manuscript if re-run.")
-        print("       > Generates NEW telemetry in /logs and overwrites /paper_results.")
+        print("       > WARNING: ~17 hours (N=500 adversarial + benign).")
+        print("       > Generates NEW telemetry — metrics will show")
+        print("         stochastic variance vs published manuscript.")
         print("")
-        
-        # Option 3: Human interaction
-        print("   [3] Interactive Debug Console (Human-in-the-Loop)")
-        print("       > Real-time chat interface to test agent routing and firewalls.")
+        print("   [3] Interactive Debug Console")
+        print("       > Real-time chat to test routing and firewalls.")
         print("")
-        
-        # Option 4: Memory Inspection
         print("   [4] Inspect Vector Database State")
-        print("       > Read-only audit of isolated memory partitions (FAISS).")
+        print("       > Read-only audit of FAISS memory partitions.")
         print("")
-        
-        # Option 5: Methodological Validation
         print("   [5] Validate Auditor Accuracy (Cohen's Kappa)")
-        print("       > Compares AI auditor results against human ground truth.")
+        print("       > HPA vs human annotation agreement.")
         print("")
-        
         print("   [6] Exit")
-        print("==========================================================")
-        
-        print("\n   Type the number of your choice and press Enter.")
-        choice = input("   >> ").strip()
-        
+        print("=" * 60)
+
+        choice = input("\n   >> ").strip()
+
         if choice == '1':
-            print("\n   >> Generating metrics from Immutable Reference Logs...\n")
-            if not os.path.exists(paper_logs_path) or not os.path.exists(utility_logs_path):
-                print(f"   !! [ERROR] Immutable logs not found in 'src/data/paper_logs/'.")
-                print("       Ensure both 'audit_results.csv' and 'ablation_utility_audit.csv' are securely placed.")
+            print("\n >> Fast Path: generating from immutable logs...\n")
+            if not os.path.exists(audit_csv) or not os.path.exists(utility_csv):
+                print(f" !! Logs not found in src/data/paper_logs/")
             else:
-                # Pass the protected paths dynamically to the downstream analytical scripts
-                run_module("run_utility_benchmark.py", [utility_logs_path])
-                run_module("evaluate_privacy_audit.py", [paper_logs_path])
-                run_module("run_auditor_ablation.py", [paper_logs_path])
-                run_module("visualization_engine.py", [paper_logs_path])
-            input("\n   [Press Enter to return to menu]")
-            
+                run_module("run_utility_benchmark.py",  [utility_csv])
+                run_module("evaluate_privacy_audit.py", [audit_csv])
+                run_module("run_auditor_ablation.py",   [audit_csv])
+                run_module("visualization_engine.py",   [audit_csv])
+            input("\n [Press Enter to return to menu]")
+
         elif choice == '2':
-            print("\n   !! WARNING: This operation takes 15+ hours and generates NEW stochastic data.")
-            confirm = input("   >> Are you sure you want to proceed? (y/n): ").strip().lower()
+            print("\n !! This takes ~17 hours and generates NEW stochastic data.")
+            confirm = input(" >> Proceed? (y/n): ").strip().lower()
             if confirm == 'y':
-                print("\n   >> Initializing Master Evaluation Pipeline...\n")
                 run_module("run_evaluation_pipeline.py")
             else:
-                print("   >> Execution aborted.")
-            input("\n   [Press Enter to return to menu]")
-            
+                print(" >> Aborted.")
+            input("\n [Press Enter to return to menu]")
+
         elif choice == '3':
-            print("\n   >> Booting Debug Console...\n")
             run_module("interactive_console.py")
-            input("\n   [Press Enter to return to menu]")
-            
+            input("\n [Press Enter to return to menu]")
+
         elif choice == '4':
-            print("\n   >> Querying Storage Layer...\n")
             run_module("view_memory.py")
-            input("\n   [Press Enter to return to menu]")
-            
+            input("\n [Press Enter to return to menu]")
+
         elif choice == '5':
-            print("\n   >> Executing Human-in-the-Loop Validation...\n")
-            if not os.path.exists(human_logs_path):
-                print(f"   !! [ERROR] Human Ground Truth not found at: {human_logs_path}")
-                print("       Ensure 'human_audit_set.csv' is securely placed in 'src/data/paper_logs/'.")
+            if not os.path.exists(human_csv):
+                print(f" !! Human ground truth not found: {human_csv}")
             else:
-                run_module("calculate_audit_metrics.py", [human_logs_path])
-            input("\n   [Press Enter to return to menu]")
+                run_module("calculate_audit_metrics.py", [human_csv])
+            input("\n [Press Enter to return to menu]")
 
         elif choice == '6':
-            print("\n   >> Exiting. Goodbye!")
+            print("\n >> Goodbye!")
             sys.exit(0)
-            
+
         else:
-            print(f"\n   !! Invalid input: '{choice}'")
-            input("   !! Please type 1-6. Press Enter to try again...")
+            print(f"\n !! Invalid input: '{choice}'")
+            input(" !! Enter 1–6. Press Enter to try again...")
+
 
 if __name__ == "__main__":
     main()

@@ -1,144 +1,167 @@
 """
-Memory State Manager (Persistence Layer)
-----------------------------------------
-Manages the lifecycle, persistence, and isolation of the Vector Database indices.
-This module functions as the state management controller, responsible for 
-initializing, verifying, and resetting semantic memory to guarantee data 
-segregation and idempotent execution states across system runs.
+Memory State Manager (Persistence Layer) — V2
+----------------------------------------------
+Manages the lifecycle, persistence, and isolation of FAISS vector indices.
 
-Architectural Design:
-- Implements a "Dual-Index" topological pattern to physically separate 
-  domain-restricted Private Vaults from the globally accessible Shared Index.
-- Utilizes FAISS (Facebook AI Similarity Search) for optimized, high-throughput 
-  dense vector retrieval.
-- Orchestrates embedding serialization via the Llama-3 embedding space to 
-  ensure semantic alignment between the storage layer and the generative compute layer.
+V2 Changes:
+- load_memory_index() now accepts index_type="flat" (default, V1 behaviour)
+  or index_type="hnsw". HNSW conversion lives here because memory_manager
+  owns all FAISS lifecycle operations. The Orchestrator simply calls
+  load_memory_index(name, index_type) and receives the correct index type.
+- _convert_to_hnsw() is a module-level helper (not buried in Orchestrator).
+- build_memory_indices() is unchanged — initial build always uses FlatL2
+  because HNSW in FAISS does not support incremental add after construction.
+  Writes (save_turn) also use FlatL2 for the same reason.
 """
 
 import json
 import os
 import shutil
+import numpy as np
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import OllamaEmbeddings
 
-# --- INFRASTRUCTURE CONFIGURATION ---
-# Robust relative path resolution to ensure portability across deployment environments
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SEEDS_FILE = os.path.join(BASE_DIR, "src", "data", "seeds.json")
 MEMORY_STORE_PATH = os.path.join(BASE_DIR, "memory_data")
 
-# Index Definitions (Must strictly map to the RBAC Agent Configuration)
 INDICES = ["emma_private", "max_private", "group_shared"]
 
-# Initialize Embedding Model (Singleton Context)
-# Instantiated at module load to avoid recurrent I/O latency during per-turn execution.
 print(" >> [System] Initializing Embedding Engine (Compute Layer)...")
 try:
     embeddings = OllamaEmbeddings(model="llama3")
 except Exception as e:
-    print(f" !! [CRITICAL ERROR] Embedding Model Instantiation Failed: {e}")
-    print("    Ensure the local inference server (Ollama) is active and reachable.")
+    print(f" !! [CRITICAL ERROR] Embedding Model Failed: {e}")
+    print("    Ensure Ollama is running.")
 
-def check_memory_integrity():
-    """
-    Verifies the existence and structural validity of all required vector indices.
-    Acts as a pre-flight health check before the Orchestrator binds to the storage layer.
-    
-    Returns:
-        bool: True if the storage layer is fully intact, False if corruption 
-              or missing partitions are detected.
-    """
+
+def check_memory_integrity() -> bool:
     if not os.path.exists(MEMORY_STORE_PATH):
         return False
-        
     for idx in INDICES:
         if not os.path.exists(os.path.join(MEMORY_STORE_PATH, idx)):
             return False
-            
     return True
 
+
+def _convert_to_hnsw(faiss_db: FAISS) -> FAISS:
+    """
+    Converts a loaded FAISS FlatL2 index to HNSW in-place.
+
+    HNSW provides O(log n) approximate nearest-neighbour retrieval,
+    suitable for enterprise-scale deployments (≥10^6 vectors).
+
+    Parameters chosen to balance recall and construction cost:
+        M=32         — number of bidirectional links per node
+        efConstruction=200 — search width during graph construction
+        efSearch=64  — search width during query time
+
+    Falls back to the original FlatL2 index if conversion fails
+    (e.g., faiss not installed with HNSW support).
+
+    Note: HNSW does not support add() after construction. All write
+    paths (save_turn, build_memory_indices) continue to use FlatL2.
+    """
+    try:
+        import faiss as faiss_lib
+
+        old_index = faiss_db.index
+        d = old_index.d
+        n = old_index.ntotal
+
+        if n == 0:
+            return faiss_db
+
+        vectors = np.zeros((n, d), dtype=np.float32)
+        old_index.reconstruct_n(0, n, vectors)
+
+        hnsw = faiss_lib.IndexHNSWFlat(d, 32)
+        hnsw.hnsw.efConstruction = 200
+        hnsw.hnsw.efSearch = 64
+        hnsw.add(vectors)
+
+        faiss_db.index = hnsw
+        print(f"    [HNSW] Converted: {n} vectors, d={d}")
+        return faiss_db
+
+    except Exception as e:
+        print(f"    [HNSW] Conversion failed ({e}), keeping FlatL2.")
+        return faiss_db
 
 
 def build_memory_indices():
     """
-    Executes a Hard Reset of the Vector Database topology.
-    
-    Pipeline Stages:
-    1. Teardown: Purges existing persistence files to prevent data contamination.
-    2. Ingestion: Loads ground-truth semantic seed data from local storage.
-    3. Vectorization: Converts raw strings into dense vector representations.
-    4. Persistence: Serializes the initialized FAISS indices to disk.
-    
-    Usage:
-    Invoked during system initialization or benchmarking to guarantee a 
-    clean, deterministic execution state.
+    Hard reset of the vector database topology.
+    Always builds FlatL2 indices (HNSW does not support incremental add).
     """
-    print(f" >> [Memory] Rebuilding Index State from: {os.path.basename(SEEDS_FILE)}")
-    
-    # 1. State Teardown (Idempotency Enforcement)
+    print(f" >> [Memory] Rebuilding from: {os.path.basename(SEEDS_FILE)}")
+
     if os.path.exists(MEMORY_STORE_PATH):
         try:
             shutil.rmtree(MEMORY_STORE_PATH)
         except PermissionError:
-            print(" !! [ERROR] I/O Lock Detected: Terminate processes accessing 'memory_data' and retry.")
+            print(" !! I/O Lock: terminate processes using 'memory_data' and retry.")
             return
-            
+
     os.makedirs(MEMORY_STORE_PATH)
 
-    # 2. Data Ingestion
     try:
         with open(SEEDS_FILE, 'r') as f:
             seed_data = json.load(f)
     except FileNotFoundError:
-        print(f" !! [CRITICAL] Seed ingestion failed. Target missing: {SEEDS_FILE}")
+        print(f" !! [CRITICAL] Seed file missing: {SEEDS_FILE}")
         return
 
-    # 3. Vectorization & Persistence
-    print(" >> [Memory] Vectorizing seed data (Blocking I/O operation)...")
-    
+    print(" >> [Memory] Vectorizing seed data...")
     try:
-        # Construct Private Partition A (High-Sensitivity Domain)
         if "emma_private" in seed_data:
-            emma_db = FAISS.from_texts(seed_data["emma_private"], embeddings)
-            emma_db.save_local(folder_path=MEMORY_STORE_PATH, index_name="emma_private")
+            db = FAISS.from_texts(seed_data["emma_private"], embeddings)
+            db.save_local(MEMORY_STORE_PATH, "emma_private")
 
-        # Construct Private Partition B (Administrative/Operations Domain)
         if "max_private" in seed_data:
-            max_db = FAISS.from_texts(seed_data["max_private"], embeddings)
-            max_db.save_local(folder_path=MEMORY_STORE_PATH, index_name="max_private")
+            db = FAISS.from_texts(seed_data["max_private"], embeddings)
+            db.save_local(MEMORY_STORE_PATH, "max_private")
 
-        # Construct Shared Partition (Globally Accessible Group Context)
         if "group_shared" in seed_data:
-            group_db = FAISS.from_texts(seed_data["group_shared"], embeddings)
-            group_db.save_local(folder_path=MEMORY_STORE_PATH, index_name="group_shared")
+            db = FAISS.from_texts(seed_data["group_shared"], embeddings)
+            db.save_local(MEMORY_STORE_PATH, "group_shared")
 
-        print(" >> [Memory] State Reset Complete. Vector indices committed to disk.")
-        
+        print(" >> [Memory] Vector indices committed to disk.")
     except Exception as e:
-        print(f" !! [ERROR] Vectorization Pipeline Failed: {e}")
+        print(f" !! Vectorization failed: {e}")
 
-def load_memory_index(index_name):
+
+def load_memory_index(index_name: str, index_type: str = "flat") -> FAISS:
     """
-    Retrieves and deserializes a specific FAISS index partition from the persistence layer.
-    
+    Loads a FAISS index partition from disk.
+
     Args:
-        index_name (str): The target partition identifier (e.g., 'max_private').
-    
+        index_name: partition identifier ("emma_private", "max_private",
+                    "group_shared").
+        index_type: "flat" returns IndexFlatL2 (exact search, default,
+                    V1 behaviour).
+                    "hnsw" converts the loaded index to HNSW before
+                    returning it (O(log n) ANN retrieval).
+
     Returns:
-        FAISS: The active vector store object bound to the requested partition.
+        FAISS vector store bound to the requested partition.
     """
-    # Auto-recovery Protocol: If indices are missing/corrupted, rebuild dynamically.
     if not check_memory_integrity():
-        print(" >> [Memory] Structural mismatch detected in storage layer. Auto-initializing...")
+        print(" >> [Memory] Integrity check failed. Auto-initializing...")
         build_memory_indices()
-        
-    return FAISS.load_local(
-        MEMORY_STORE_PATH, 
-        embeddings, 
-        index_name, 
-        allow_dangerous_deserialization=True # Acknowledged security exception: Loading from trusted internal seeds.json
+
+    db = FAISS.load_local(
+        MEMORY_STORE_PATH,
+        embeddings,
+        index_name,
+        allow_dangerous_deserialization=True
     )
 
+    if index_type == "hnsw":
+        db = _convert_to_hnsw(db)
+
+    return db
+
+
 if __name__ == "__main__":
-    # Provides a CLI hook for manual administrative resets of the vector database
     build_memory_indices()

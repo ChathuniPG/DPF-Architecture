@@ -1,123 +1,142 @@
 """
-System Registry (Architecture Control Plane)
---------------------------------------------
-This module serves as the central state manager and configuration registry 
-for the multi-agent orchestration framework. It utilizes a feature-flag 
-matrix to define distinct operational architectures, facilitating controlled 
-ablation testing and performance benchmarking.
+System Registry (Architecture Control Plane) — V2
+--------------------------------------------------
+Central state manager and configuration registry for the multi-agent framework.
 
-Supported Architectural Modes:
-1. NAIVE_CONTROL (Unmitigated Baseline):
-   - Routing: Semantic/Vector-based (Enabled).
-   - Security: Disabled.
-   - Function: Establishes a baseline for uncontrolled semantic retrieval, 
-     allowing measurement of raw context collision rates without architectural guards.
+V2 Changes:
+- DPF_PROPOSED: enable_post_generation_filter set to False (FRR fix).
+  Running both pre-gen firewall and egress filter simultaneously caused
+  double-jeopardy false refusals. Mutual exclusivity is the correct
+  implementation of Proposition 1.
 
-2. STANDARD_POSTHOC (Reactive Security Baseline):
-   - Routing: Semantic/Vector-based.
-   - Security: Reactive (Post-Generation Output Filtering).
-   - Function: Simulates traditional 'generate-then-filter' pipelines where 
-     sensitive context enters the generative model, and sanitization relies on 
-     probabilistic or heuristic output scanning.
+- STANDARD_POSTHOC_NLI added as a 4th mode (Issue 6 fix).
+  The original POST-HOC baseline used only regex egress filtering.
+  Comparing DPF against a regex-only post-hoc baseline is a strawman:
+  the HPA uses NLI (DeBERTa-v3) for measurement but the baseline
+  doesn't. STANDARD_POSTHOC_NLI enables a fair comparison by giving
+  the post-hoc baseline the same NLI detection power used in the HPA,
+  isolating enforcement-stage placement as the true causal variable.
 
-3. DPF_PROPOSED (Pre-Generation Enforcement):
-   - Routing: Semantic/Vector-based.
-   - Security: Proactive (Input Sanitization + Strict Access Control).
-   - Function: Represents a zero-trust architecture enforcing deterministic 
-     Information Flow Control (IFC) prior to context window construction.
+- llm_backend added to all configs (Issue 1 fix).
+  Allows switching between "llama3" (4-bit GGUF, default) and
+  "llama3:8b-instruct-fp16" (full precision) for cross-model sensitivity
+  analysis. The Orchestrator and AgentEngine read this field.
+
+- enable_timing_normalization and enable_router_instrumentation added.
 """
 
-# Global State Variable (Default = DPF_PROPOSED)
 _current_mode = "DPF_PROPOSED"
+_current_backend = "llama3"   # default: 4-bit quantized (V1 behaviour)
 
-def set_system_mode(mode_name):
-    """
-    Updates the active system architecture state for the execution runtime.
-    
-    Args:
-        mode_name (str): The target architectural mode 
-                         ('DPF_PROPOSED', 'STANDARD_POSTHOC', 'NAIVE_CONTROL').
-    
-    Raises:
-        ValueError: If an undefined architectural mode is requested.
-    """
+VALID_MODES = [
+    "DPF_PROPOSED",
+    "STANDARD_POSTHOC",
+    "STANDARD_POSTHOC_NLI",   # V2 NEW: NLI-augmented post-hoc (fair baseline)
+    "NAIVE_CONTROL",
+]
+
+VALID_BACKENDS = [
+    "llama3",                      # 4-bit GGUF (Ollama default) — V1 backend
+    "llama3:8b-instruct-fp16",     # Full float16 precision via Ollama — V2 sensitivity
+]
+
+
+def set_system_mode(mode_name: str):
     global _current_mode
-    valid_modes = ["DPF_PROPOSED", "STANDARD_POSTHOC", "NAIVE_CONTROL"]
-    
-    if mode_name not in valid_modes:
-        raise ValueError(f"CRITICAL: Unknown System Mode requested: {mode_name}")
-    
+    if mode_name not in VALID_MODES:
+        raise ValueError(
+            f"Unknown mode: '{mode_name}'. Valid: {VALID_MODES}"
+        )
     _current_mode = mode_name
-    print(f" >> [REGISTRY] System Architecture switched to: {_current_mode}")
+    print(f" >> [REGISTRY] Architecture → {_current_mode}")
 
-def get_system_config():
+
+def set_llm_backend(backend: str):
     """
-    Returns the feature flag matrix for the currently active architecture.
-    This configuration dictates the control flow within the Orchestrator.
-    
-    Returns:
-        dict: A dictionary mapping architectural features to boolean states.
+    Switches the LLM backend for cross-model sensitivity analysis.
+    Call before run_batch() to change which model is used for generation.
     """
-    # --- MODE A: PROPOSED ARCHITECTURE (Zero Trust / Pre-Computation) ---
+    global _current_backend
+    if backend not in VALID_BACKENDS:
+        raise ValueError(
+            f"Unknown backend: '{backend}'. Valid: {VALID_BACKENDS}"
+        )
+    _current_backend = backend
+    print(f" >> [REGISTRY] LLM Backend → {_current_backend}")
+
+
+def get_llm_backend() -> str:
+    return _current_backend
+
+
+def get_system_config() -> dict:
+    """
+    Returns the feature-flag matrix for the active architectural mode.
+    All configs now include 'llm_backend' so the Orchestrator and
+    AgentEngine can read it without separate global access.
+    """
+
+    # --- MODE A: PROPOSED ARCHITECTURE ---
     if _current_mode == "DPF_PROPOSED":
         return {
             "system_label": "DPF_PROPOSED",
-            
-            # [Core Routing] Vector Similarity enabled for high-fidelity intent matching
             "enable_smart_routing": True,
-            
-            # [Structural Enforcement] Deterministic Firewall enforces policy BEFORE generation
-            "enable_pre_generation_firewall": True,  
-            
-            # [Defense-in-Depth] Secondary output filter acts as an egress fail-safe
-            "enable_post_generation_filter": True,   
-            
-            # [Control Plane] Real-time risk scoring for dynamic context switching
+            "enable_pre_generation_firewall": True,
+            # V2 FIX: False — running both caused double-jeopardy FRR
+            "enable_post_generation_filter": False,
+            "enable_post_generation_nli": False,
             "enable_active_guardrails": True,
-            
-            # [Optimization] Context pruning to minimize token window saturation
-            "enable_context_pruning": True     
+            "enable_context_pruning": True,
+            "enable_timing_normalization": True,
+            "enable_router_instrumentation": True,
+            "llm_backend": _current_backend,
         }
-    
-    # --- MODE B: INDUSTRY STANDARD (Generate-then-Filter) ---
-    # Simulates standard RAG implementations where the LLM is exposed to raw private data,
-    # and a secondary process attempts to identify leaks in the generated text.
+
+    # --- MODE B: STANDARD POST-HOC (regex egress only, V1 baseline) ---
     elif _current_mode == "STANDARD_POSTHOC":
         return {
             "system_label": "STANDARD_POSTHOC",
-            
             "enable_smart_routing": True,
-            
-            # [Vulnerability Surface] Private data is permitted to enter the LLM Context Window
-            "enable_pre_generation_firewall": False, 
-            
-            # [Latency Penalty] Sanitization occurs strictly after token generation
-            "enable_post_generation_filter": True,   
-            
-            # Disabled to strictly isolate the performance of the Post-Hoc filter mechanism
-            "enable_active_guardrails": False, 
-            
-            "enable_context_pruning": True
+            "enable_pre_generation_firewall": False,
+            "enable_post_generation_filter": True,   # regex egress only
+            "enable_post_generation_nli": False,
+            "enable_active_guardrails": False,
+            "enable_context_pruning": True,
+            "enable_timing_normalization": False,
+            "enable_router_instrumentation": False,
+            "llm_backend": _current_backend,
         }
 
-    # --- MODE C: NAIVE CONTROL (Unmitigated Baseline) ---
-    # Establishes the upper bound of risk (Maximum Context Collision).
+    # --- MODE C: STANDARD POST-HOC + NLI (fair baseline, V2 NEW) ---
+    # Gives the post-hoc baseline the same NLI detection capability used
+    # in the HPA measurement instrument. This isolates enforcement-stage
+    # placement (pre vs post) as the sole causal variable, making the
+    # DPF vs POST-HOC comparison scientifically defensible.
+    elif _current_mode == "STANDARD_POSTHOC_NLI":
+        return {
+            "system_label": "STANDARD_POSTHOC_NLI",
+            "enable_smart_routing": True,
+            "enable_pre_generation_firewall": False,
+            "enable_post_generation_filter": True,   # regex egress
+            "enable_post_generation_nli": True,      # + NLI egress (NEW)
+            "enable_active_guardrails": False,
+            "enable_context_pruning": True,
+            "enable_timing_normalization": False,
+            "enable_router_instrumentation": False,
+            "llm_backend": _current_backend,
+        }
+
+    # --- MODE D: NAIVE CONTROL (unmitigated baseline) ---
     else:
         return {
             "system_label": "NAIVE_CONTROL",
-            
-            # [CRITICAL EVALUATION CONFIGURATION] 
-            # Smart Routing is ENABLED. 
-            # Architectural Justification: To accurately measure 'Context Collision,' the system 
-            # must be structurally competent enough to retrieve the sensitive memory. If routing 
-            # were random, a non-leak might occur simply because the agent failed to find the 
-            # data (Retrieval Error) rather than because it was secured. Enabling routing 
-            # eliminates False Negatives in security benchmarking.
             "enable_smart_routing": True,
-            
-            # [Ablation] All security layers disabled to measure raw semantic leakage rates
             "enable_pre_generation_firewall": False,
             "enable_post_generation_filter": False,
+            "enable_post_generation_nli": False,
             "enable_active_guardrails": False,
-            "enable_context_pruning": False     
+            "enable_context_pruning": False,
+            "enable_timing_normalization": False,
+            "enable_router_instrumentation": False,
+            "llm_backend": _current_backend,
         }
