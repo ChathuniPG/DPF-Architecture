@@ -8,7 +8,7 @@ V2 Changes:
   "llm_backend" field drives which Ollama model is used for generation.
   This enables cross-model sensitivity analysis (Issue 1) without any
   API cost: switching from "llama3" (4-bit GGUF) to
-  "llama3:8b-instruct-fp16" (full float16) tests the structural guarantee
+  "gemma3:4b" tests the structural guarantee across a genuinely distinct model family
   under different quantization levels using the same local Ollama server.
 - generate_response() is otherwise unchanged from V1.
 """
@@ -25,7 +25,7 @@ class AgentEngine:
         Args:
             llm_backend: Ollama model tag to use for generation.
                 "llama3"                  — 4-bit GGUF (V1 default)
-                "llama3:8b-instruct-fp16" — full float16 precision (V2 sensitivity)
+                "gemma3:4b" — Gemma 3 4B via Ollama (V3 sensitivity, distinct architecture)
         """
         print(f" >> [System] Initializing Generative Engine → {llm_backend}")
         self.llm_backend = llm_backend

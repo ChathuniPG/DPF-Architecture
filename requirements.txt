@@ -96,3 +96,23 @@ zstandard==0.25.0
 sentence-transformers==3.0.1
 torch==2.6.0
 tqdm==4.66.4
+# ============================================================
+# GPU SETUP NOTES (RTX 3050 / Windows 11)
+# ============================================================
+# faiss-gpu is discontinued on PyPI for Python 3.x.
+# Keep faiss-cpu — FAISS is NOT the latency bottleneck here.
+# LLM inference (Ollama) and NLI inference (sentence-transformers)
+# both use your RTX 3050 GPU automatically when CUDA is available.
+#
+# To enable GPU for NLI/DeBERTa, ensure you have the CUDA-enabled
+# PyTorch build. Replace the torch line above with:
+#   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+#
+# For Ollama GPU acceleration on Windows:
+#   1. Install CUDA Toolkit 12.x: https://developer.nvidia.com/cuda-downloads
+#   2. Ollama detects your GPU automatically — no config needed.
+#   3. Verify with: ollama run llama3 and check Task Manager GPU Compute
+#
+# For Gemma 3 4B (sensitivity analysis backend):
+#   ollama pull gemma3:4b
+#   Disk: ~2.5 GB | VRAM: ~2.8 GB (fits RTX 3050 4GB)

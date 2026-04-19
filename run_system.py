@@ -1,16 +1,12 @@
 """
-System Entry Point & Environment Controller — V2
+System Entry Point & Environment Controller — V3
 -------------------------------------------------
 Primary CLI driver for the DPF architecture repository.
 
-V2 Changes vs V1:
-- run_module() now resolves scripts using a priority search list:
-    1. project root
-    2. src/evaluation/   ← new location for evaluation harnesses
-    3. src/              ← legacy location (visualization_engine, etc.)
-  This ensures all menu options work correctly after the git mv refactor.
-- Menu text updated to reflect V2 new outputs (router_accuracy.csv,
-  threat_class_breakdown.csv).
+V3 Changes:
+- Menu updated to reflect V3 two-phase evaluation structure.
+- GPU diagnostic displayed on launch.
+- run_module() resolves scripts from src/evaluation/ first.
 """
 
 import sys
@@ -45,26 +41,33 @@ def check_dependencies():
             sys.exit(1)
 
 
+def check_gpu():
+    """Quick GPU status for the startup banner."""
+    try:
+        import torch
+        if torch.cuda.is_available():
+            name = torch.cuda.get_device_name(0)
+            vram = torch.cuda.get_device_properties(0).total_memory / 1e9
+            return f"GPU: {name} ({vram:.1f} GB) — CUDA available ✓"
+        return "GPU: CUDA not available (CPU mode)"
+    except Exception:
+        return "GPU: Status unknown"
+
+
 def run_module(script_name: str, args=None):
     """
     Execute a script as an isolated subprocess.
-    V2: searches src/evaluation/ before src/ so moved harnesses resolve correctly.
+    Searches src/evaluation/ before src/ so moved harnesses resolve correctly.
     """
     base = os.path.dirname(os.path.abspath(__file__))
-
     candidates = [
         os.path.join(base, script_name),
         os.path.join(base, "src", "evaluation", script_name),
         os.path.join(base, "src", script_name),
     ]
 
-    script_path = None
-    for c in candidates:
-        if os.path.exists(c):
-            script_path = c
-            break
-
-    if script_path is None:
+    script_path = next((c for c in candidates if os.path.exists(c)), None)
+    if not script_path:
         print(f" !! [ERROR] Script not found: {script_name}")
         return
 
@@ -77,37 +80,42 @@ def run_module(script_name: str, args=None):
 
 def main():
     check_dependencies()
+    gpu_status = check_gpu()
 
     base = os.path.dirname(os.path.abspath(__file__))
-    paper_logs = os.path.join(base, "src", "data", "paper_logs")
-    audit_csv  = os.path.join(paper_logs, "audit_results.csv")
+    paper_logs  = os.path.join(base, "src", "data", "paper_logs")
+    audit_csv   = os.path.join(paper_logs, "audit_results.csv")
     utility_csv = os.path.join(paper_logs, "ablation_utility_audit.csv")
-    human_csv  = os.path.join(paper_logs, "human_audit_set.csv")
+    human_csv   = os.path.join(paper_logs, "human_audit_set.csv")
 
     while True:
         os.system('cls' if os.name == 'nt' else 'clear')
 
         print("=" * 60)
-        print("   DPF ARCHITECTURE V2: SYSTEM CONTROL INTERFACE")
+        print("   DPF ARCHITECTURE V3: SYSTEM CONTROL INTERFACE")
         print("=" * 60)
+        print(f"   {gpu_status}")
+        print("=" * 60)
+        print()
         print("   [1] Generate Reference Figures & Tables (Fast Path)")
         print("       > Immutable logs from src/data/paper_logs/")
         print("       > Instant CSV + PNG output to /paper_results/")
-        print("")
+        print()
         print("   [2] Re-run Full Evaluation Pipeline (Slow Path)")
-        print("       > WARNING: ~17 hours (N=500 adversarial + benign).")
-        print("       > Generates NEW telemetry — metrics will show")
-        print("         stochastic variance vs published manuscript.")
-        print("")
+        print("       > Phase 1: Llama-3-8B × 4 modes × N=500  (~17h)")
+        print("       > Phase 2: Gemma-3-4B × 4 modes × N=500  (~17h)")
+        print("       > WARNING: ~34 hours total.")
+        print("       > Requires: ollama pull gemma3:4b")
+        print()
         print("   [3] Interactive Debug Console")
         print("       > Real-time chat to test routing and firewalls.")
-        print("")
+        print()
         print("   [4] Inspect Vector Database State")
         print("       > Read-only audit of FAISS memory partitions.")
-        print("")
+        print()
         print("   [5] Validate Auditor Accuracy (Cohen's Kappa)")
         print("       > HPA vs human annotation agreement.")
-        print("")
+        print()
         print("   [6] Exit")
         print("=" * 60)
 
@@ -125,7 +133,11 @@ def main():
             input("\n [Press Enter to return to menu]")
 
         elif choice == '2':
-            print("\n !! This takes ~17 hours and generates NEW stochastic data.")
+            print("\n !! FULL PIPELINE — ~34 hours total.")
+            print("    Phase 1: Llama-3-8B  (~17h)")
+            print("    Phase 2: Gemma-3-4B  (~17h)")
+            print()
+            print("    Before proceeding, run: ollama pull gemma3:4b")
             confirm = input(" >> Proceed? (y/n): ").strip().lower()
             if confirm == 'y':
                 run_module("run_evaluation_pipeline.py")
