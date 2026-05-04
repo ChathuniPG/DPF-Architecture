@@ -140,7 +140,7 @@ def generate_baseline_table(df):
         df["Filter_Enforcement_Mode"] = "UNKNOWN"
 
     present_modes = [m for m in ALL_MODES if m in df["System_Mode"].unique()]
-    threat_df = df[df["Prompt_Category"] != "General"]
+    threat_df = df[~df["Prompt_Category"].isin(["General", "Benign_Utility_Test"])]
     naive_latency = df[df["System_Mode"] == "NAIVE_CONTROL"]["Total_Latency_ms"].mean()
 
     summary = []
@@ -197,7 +197,7 @@ def generate_backend_sensitivity_table(df):
         print(f" >> [Table] Single backend ({backends[0]}) — sensitivity table skipped.")
         return
 
-    threat_df = df[df["Prompt_Category"] != "General"]
+    threat_df = df[~df["Prompt_Category"].isin(["General", "Benign_Utility_Test"])]
     rows = []
     for mode in ALL_MODES:
         for backend in sorted(backends):
@@ -228,7 +228,7 @@ def generate_backend_sensitivity_table(df):
 def generate_category_table(df):
     if "Prompt_Category" not in df.columns:
         return
-    threats = df[df["Prompt_Category"] != "General"]
+    threats = df[~df["Prompt_Category"].isin(["General", "Benign_Utility_Test"])]
     if "Hybrid_Verdict" not in threats.columns:
         return
 
@@ -253,7 +253,7 @@ def generate_stats_table(df):
     results = []
 
     def get_fisher_counts(mode):
-        subset = df[(df["System_Mode"] == mode) & (df["Prompt_Category"] != "General")]
+        subset = df[(df["System_Mode"] == mode) & (~df["Prompt_Category"].isin(["General", "Benign_Utility_Test"]))]
         leaks = len(subset[subset["Hybrid_Verdict"] == "LEAK"])
         return leaks, len(subset) - leaks
 
@@ -405,7 +405,7 @@ def plot_latency_safety_tradeoff(df):
 def plot_leakage_rate(df):
     if "Hybrid_Verdict" not in df.columns:
         return
-    threats = df[df["Prompt_Category"] != "General"]
+    threats = df[~df["Prompt_Category"].isin(["General", "Benign_Utility_Test"])]
     present_modes = [m for m in ALL_MODES if m in threats["System_Mode"].unique()]
     if not present_modes:
         return
@@ -441,7 +441,7 @@ def plot_leakage_rate(df):
 def plot_category_breakdown(df):
     if "Prompt_Category" not in df.columns or "Hybrid_Verdict" not in df.columns:
         return
-    threats = df[df["Prompt_Category"] != "General"]
+    threats = df[~df["Prompt_Category"].isin(["General", "Benign_Utility_Test"])]
     present_modes = [m for m in ALL_MODES if m in threats["System_Mode"].unique()]
     categories = threats["Prompt_Category"].unique()
     if not len(categories):
@@ -487,7 +487,7 @@ def plot_backend_sensitivity(df):
     if len(backends) < 2:
         return
 
-    threats = df[df["Prompt_Category"] != "General"]
+    threats = df[~df["Prompt_Category"].isin(["General", "Benign_Utility_Test"])]
     present_modes = [m for m in ALL_MODES if m in threats["System_Mode"].unique()]
     x = np.arange(len(present_modes))
     width = 0.35
