@@ -25,8 +25,8 @@ EVAL_DIR = os.path.dirname(os.path.abspath(__file__))
 SRC_DIR = os.path.dirname(EVAL_DIR)
 BASE_DIR = os.path.dirname(SRC_DIR)
 
-LOG_DIR = os.path.join(BASE_DIR, "logs")
-OUTPUT_DIR = os.path.join(BASE_DIR, "paper_results")
+LOG_DIR    = os.environ.get("DPF_LOG_DIR",    os.path.join(BASE_DIR, "logs"))
+OUTPUT_DIR = os.environ.get("DPF_OUTPUT_DIR", os.path.join(BASE_DIR, "paper_results"))
 
 # Allow dynamic path injection from CLI; default to runtime logs
 if len(sys.argv) > 1:
@@ -34,7 +34,7 @@ if len(sys.argv) > 1:
 else:
     INPUT_FILE = os.path.join(LOG_DIR, "audit_results.csv")
 
-OUTPUT_FILE = os.path.join(OUTPUT_DIR, "failure_mode_ablation.csv")
+OUTPUT_FILE     = os.path.join(OUTPUT_DIR, "failure_mode_ablation.csv")
 ROUTER_LOG_FILE = os.path.join(LOG_DIR, "router_log_DPF_PROPOSED.csv")
 
 TARGET_ARCHITECTURE = "DPF_PROPOSED"

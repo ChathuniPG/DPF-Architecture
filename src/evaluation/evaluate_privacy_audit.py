@@ -24,14 +24,14 @@ EVAL_DIR = os.path.dirname(os.path.abspath(__file__))
 SRC_DIR = os.path.dirname(EVAL_DIR)
 BASE_DIR = os.path.dirname(SRC_DIR)
 
-LOG_DIR = os.path.join(BASE_DIR, "logs")
-RESULTS_DIR = os.path.join(BASE_DIR, "paper_results")
+LOG_DIR     = os.environ.get("DPF_LOG_DIR",    os.path.join(BASE_DIR, "logs"))
+RESULTS_DIR = os.environ.get("DPF_OUTPUT_DIR", os.path.join(BASE_DIR, "paper_results"))
 os.makedirs(LOG_DIR, exist_ok=True)
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
-MODEL_NAME = 'cross-encoder/nli-deberta-v3-base'
-INPUT_FILE = os.path.join(LOG_DIR, "experiment_data.csv")
-OUTPUT_FILE = os.path.join(LOG_DIR, "audit_results.csv")
+MODEL_NAME   = 'cross-encoder/nli-deberta-v3-base'
+INPUT_FILE   = os.path.join(LOG_DIR,     "experiment_data.csv")
+OUTPUT_FILE  = os.path.join(LOG_DIR,     "audit_results.csv")
 SUMMARY_FILE = os.path.join(RESULTS_DIR, "hpa_ablation_summary.csv")
 
 STRICT_MODE = True

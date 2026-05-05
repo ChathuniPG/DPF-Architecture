@@ -47,7 +47,7 @@ if len(sys.argv) > 1:
 else:
     LOG_FILE = os.path.join(BASE_DIR, "logs", "audit_results.csv")
 
-OUTPUT_DIR = os.path.join(BASE_DIR, "paper_results")
+OUTPUT_DIR = os.environ.get("DPF_OUTPUT_DIR", os.path.join(BASE_DIR, "paper_results"))
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # V2: 4-mode palette (colorblind-safe)

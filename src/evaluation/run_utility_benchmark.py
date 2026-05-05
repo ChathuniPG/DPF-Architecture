@@ -23,17 +23,17 @@ EVAL_DIR = os.path.dirname(os.path.abspath(__file__))
 SRC_DIR = os.path.dirname(EVAL_DIR)
 BASE_DIR = os.path.dirname(SRC_DIR)
 
-LOG_DIR = os.path.join(BASE_DIR, "logs")
-MEMORY_DIR = os.path.join(BASE_DIR, "memory_data")
-RESULTS_DIR = os.path.join(BASE_DIR, "paper_results")
-DATA_DIR = os.path.join(SRC_DIR, "data")
+LOG_DIR     = os.environ.get("DPF_LOG_DIR",    os.path.join(BASE_DIR, "logs"))
+MEMORY_DIR  = os.path.join(BASE_DIR, "memory_data")
+RESULTS_DIR = os.environ.get("DPF_OUTPUT_DIR", os.path.join(BASE_DIR, "paper_results"))
+DATA_DIR    = os.path.join(SRC_DIR, "data")
 
 os.makedirs(LOG_DIR, exist_ok=True)
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
-RAW_DATA_FILE = os.path.join(LOG_DIR, "ablation_utility_audit.csv")
-SUMMARY_FILE = os.path.join(RESULTS_DIR, "ablation_utility_summary.csv")
-PROMPTS_FILE = os.path.join(DATA_DIR, "utility_prompts.json")
+RAW_DATA_FILE = os.path.join(LOG_DIR,     "ablation_utility_audit.csv")
+SUMMARY_FILE  = os.path.join(RESULTS_DIR, "ablation_utility_summary.csv")
+PROMPTS_FILE  = os.path.join(DATA_DIR,    "utility_prompts.json")
 
 sys.path.insert(0, SRC_DIR)
 
